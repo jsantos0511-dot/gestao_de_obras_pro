@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
-from datetime import datetime
 
 # --- CONFIGURAÇÕES ---
 SUPABASE_URL = "https://ryzcivhjohgtzixqflwo.supabase.co"
@@ -13,17 +12,20 @@ def get_supabase():
 
 supabase = get_supabase()
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-# initial_sidebar_state="collapsed" garante que comece com o ícone das 3 barrinhas
+# --- CONFIGURAÇÃO DA PÁGINA (AQUI ESTÁ O SEGREDO) ---
 st.set_page_config(
     page_title="Obras Pro", 
     layout="centered", 
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed" # Força começar fechado (as 3 barrinhas)
 )
 
-# Estilização CSS
+# CSS para esconder o botão de fechar nativo e ajustar o visual
 st.markdown("""
     <style>
+    /* Faz o menu lateral se comportar de forma mais agressiva no fechamento */
+    [data-testid="sidebar-button"] {
+        display: none;
+    }
     .metric-card {
         background-color: #161b22;
         padding: 15px;
@@ -43,11 +45,16 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").order("nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- MENU LATERAL (O ÍCONE DE 3 BARRINHAS) ---
+# --- MENU LATERAL ---
+# No Streamlit, quando você clica em um rádio na sidebar, 
+# o app inteiro recarrega. No celular, isso faz o menu fechar.
 with st.sidebar:
-    st.markdown("### 🏗️ Navegação")
-    # Ao selecionar aqui, o Streamlit recarrega a página com a nova seleção e recolhe o menu no celular
-    pagina = st.radio("Ir para:", ["📊 Dashboard", "💸 Novo Gasto", "📋 Histórico", "⚙️ Configurações"])
+    st.title("🏗️ Menu")
+    pagina = st.radio(
+        "Navegação", 
+        ["📊 Dashboard", "💸 Novo Gasto", "📋 Histórico", "⚙️ Configurações"],
+        key="menu_navegacao"
+    )
 
 # --- TELAS ---
 
@@ -55,10 +62,9 @@ if pagina == "📊 Dashboard":
     st.header("Resumo Financeiro")
     obras_dict = listar_obras()
     if obras_dict:
-        obra_nome = st.selectbox("Selecione a Obra", list(obras_dict.keys()))
+        obra_nome = st.selectbox("Obra", list(obras_dict.keys()))
         id_obra = obras_dict[obra_nome]
         
-        # Busca info da obra e gastos
         obra_info = supabase.table("obras").select("*").eq("id", id_obra).single().execute().data
         res_soma = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': id_obra}).execute()
         
@@ -67,17 +73,15 @@ if pagina == "📊 Dashboard":
         
         st.markdown(f"""
             <div class="metric-card">
-                <small>Orçamento Total: R$ {orcamento:,.2f}</small><br>
-                <b style="font-size:1.3em; color:#f85149">Gasto Atual: R$ {total_gasto:,.2f}</b><br>
-                <small style="color:#3fb950">Disponível: R$ {(orcamento - total_gasto):,.2f}</small>
+                <small>Orçamento: R$ {orcamento:,.2f}</small><br>
+                <b style="font-size:1.3em; color:#f85149">Gasto: R$ {total_gasto:,.2f}</b><br>
+                <small style="color:#3fb950">Saldo: R$ {(orcamento - total_gasto):,.2f}</small>
             </div>
         """, unsafe_allow_html=True)
 
         if res_soma.data:
             df = pd.DataFrame(res_soma.data)
             st.bar_chart(df.set_index('nome_categoria'))
-    else:
-        st.info("Clique nas 3 barrinhas e cadastre uma obra em 'Configurações'.")
 
 elif pagina == "💸 Novo Gasto":
     st.header("Lançar Despesa")
@@ -85,49 +89,40 @@ elif pagina == "💸 Novo Gasto":
     cats_dict = listar_categorias()
     
     if obras_dict:
-        with st.form("form_gasto", clear_on_submit=True):
+        with st.form("form_gasto"):
             obra = st.selectbox("Obra", list(obras_dict.keys()))
             cat = st.selectbox("Categoria", list(cats_dict.keys()))
-            desc = st.text_input("Descrição (Ex: Tubos de PVC)")
-            val = st.number_input("Valor (R$)", min_value=0.0, step=0.01)
+            desc = st.text_input("Descrição")
+            val = st.number_input("Valor (R$)", min_value=0.0)
             
-            if st.form_submit_button("Salvar Lançamento"):
-                if desc and val > 0:
-                    supabase.table("lancamentos_obra").insert({
-                        "obra_id": obras_dict[obra],
-                        "categoria_id": cats_dict[cat],
-                        "descricao": desc,
-                        "valor": val
-                    }).execute()
-                    st.success("Gasto registrado com sucesso!")
-                else:
-                    st.error("Preencha a descrição e o valor.")
+            if st.form_submit_button("Salvar"):
+                supabase.table("lancamentos_obra").insert({
+                    "obra_id": obras_dict[obra],
+                    "categoria_id": cats_dict[cat],
+                    "descricao": desc,
+                    "valor": val
+                }).execute()
+                st.success("Lançado!")
+                st.rerun() # O rerun força a página a recarregar e o menu a fechar
 
 elif pagina == "📋 Histórico":
-    st.header("Histórico de Lançamentos")
+    st.header("Histórico")
     obras_dict = listar_obras()
     if obras_dict:
-        obra_sel = st.selectbox("Ver histórico de:", list(obras_dict.keys()))
-        id_obra = obras_dict[obra_sel]
+        obra_sel = st.selectbox("Filtrar por:", list(obras_dict.keys()))
+        gastos = supabase.table("lancamentos_obra").select("id, data_gasto, descricao, valor").eq("obra_id", obras_dict[obra_sel]).order("data_gasto", desc=True).execute().data
         
-        # Busca os últimos 20 gastos
-        gastos = supabase.table("lancamentos_obra").select("id, data_gasto, descricao, valor").eq("obra_id", id_obra).order("data_gasto", desc=True).execute().data
-        
-        if gastos:
-            for g in gastos:
-                with st.expander(f"{g['data_gasto']} - {g['descricao']} (R$ {g['valor']})"):
-                    if st.button("Excluir Lançamento", key=g['id']):
-                        supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute()
-                        st.success("Excluído!")
-                        st.rerun()
-        else:
-            st.write("Nenhum gasto encontrado para esta obra.")
+        for g in gastos:
+            with st.expander(f"{g['descricao']} - R$ {g['valor']}"):
+                if st.button("Excluir", key=g['id']):
+                    supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute()
+                    st.rerun()
 
 elif pagina == "⚙️ Configurações":
     st.header("Configurações")
-    with st.expander("➕ Adicionar Nova Obra"):
-        nome = st.text_input("Nome")
-        verba = st.number_input("Verba", min_value=0.0)
-        if st.button("Criar"):
-            supabase.table("obras").insert({"nome_obra": nome, "orcamento_previsto": verba}).execute()
+    with st.expander("➕ Nova Obra"):
+        n = st.text_input("Nome")
+        v = st.number_input("Verba", min_value=0.0)
+        if st.button("Cadastrar"):
+            supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
             st.rerun()
