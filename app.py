@@ -17,27 +17,36 @@ supabase = get_supabase()
 st.set_page_config(
     page_title="ROSECON Pro", 
     layout="centered", 
-    initial_sidebar_state="collapsed" # Força o menu a começar escondido
+    initial_sidebar_state="collapsed"
 )
 
 def formatar_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
 
-# CSS para limpar o visual e ajustar o topo
+# CSS para remover o campo de seleção e estilizar botões laterais
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem !important; }
     .header-box { text-align: center; margin-bottom: 10px; }
     
-    /* Melhora a aparência do menu lateral */
-    [data-testid="stSidebar"] {
-        background-color: #1a1c23;
-    }
-    [data-testid="stSidebar"] .stMarkdown h2 {
-        color: white;
-        font-size: 20px;
+    /* Estilização dos botões da Sidebar para parecerem itens de menu */
+    [data-testid="stSidebar"] div.stButton > button {
+        width: 100% !important;
+        border: none !important;
+        background-color: transparent !important;
+        color: white !important;
+        text-align: left !important;
+        font-size: 16px !important;
+        padding: 10px 0px !important;
+        border-bottom: 1px solid #3d3f4b !important;
+        border-radius: 0px !important;
     }
     
+    [data-testid="stSidebar"] div.stButton > button:hover {
+        color: #007bff !important;
+        background-color: #262730 !important;
+    }
+
     .data-card {
         background-color: white;
         padding: 15px;
@@ -48,6 +57,31 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- LÓGICA DE NAVEGAÇÃO ---
+if 'pagina' not in st.session_state:
+    st.session_state.pagina = '📊 RESUMO'
+
+# --- MENU LATERAL (SIDEBAR) ---
+with st.sidebar:
+    st.markdown("## 🏗️ MENU")
+    
+    # Botões que funcionam como links e fecham o menu no celular
+    if st.sidebar.button("📊 RESUMO GERAL"):
+        st.session_state.pagina = '📊 RESUMO'
+        st.rerun()
+        
+    if st.sidebar.button("👷 GERENCIAR OBRAS"):
+        st.session_state.pagina = '👷 OBRAS'
+        st.rerun()
+        
+    if st.sidebar.button("💸 LANÇAR GASTO"):
+        st.session_state.pagina = '💸 GASTO'
+        st.rerun()
+        
+    if st.sidebar.button("📋 HISTÓRICO"):
+        st.session_state.pagina = '📋 LISTA'
+        st.rerun()
+
 # --- CABEÇALHO ---
 st.markdown('<div class="header-box">', unsafe_allow_html=True)
 if os.path.exists("LOGOMARCA.jpeg"):
@@ -55,18 +89,6 @@ if os.path.exists("LOGOMARCA.jpeg"):
 else:
     st.markdown("<h3 style='margin:0;'>ROSECON ENGENHARIA</h3>", unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
-
-# --- MENU RETRÁTIL (SIDEBAR) ---
-with st.sidebar:
-    st.markdown("## 🏗️ Navegação")
-    # O segredo: No celular, ao selecionar o rádio, o Streamlit recarrega e fecha a sidebar
-    pagina = st.radio(
-        "Selecione a tela:",
-        ["📊 Resumo Geral", "👷 Gerenciar Obras", "💸 Lançar Gasto", "📋 Histórico de Gastos"],
-        key="menu_principal"
-    )
-    st.markdown("---")
-    st.caption("ROSECON Pro v1.0")
 
 # --- FUNÇÕES ---
 def listar_obras():
@@ -77,9 +99,10 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").order("nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- TELAS ---
+# --- RENDERIZAÇÃO DAS TELAS ---
+pag = st.session_state.pagina
 
-if pagina == "📊 Resumo Geral":
+if pag == '📊 RESUMO':
     obras = listar_obras()
     if obras:
         o_nome = st.selectbox("Escolha a Obra", list(obras.keys()))
@@ -99,45 +122,36 @@ if pagina == "📊 Resumo Geral":
                 </div>
             </div>
         """, unsafe_allow_html=True)
-        
         if res_s.data:
-            st.write("---")
             st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
-    else:
-        st.info("Abra o menu lateral e cadastre uma Obra.")
 
-elif pagina == "👷 Gerenciar Obras":
-    st.write("### 🏗️ Cadastro de Obras")
-    with st.form("nova_obra"):
-        n = st.text_input("Nome do Empreendimento")
-        v = st.number_input("Orçamento Previsto (R$)", min_value=0.0)
-        if st.form_submit_button("CADASTRAR"):
+elif pag == '👷 OBRAS':
+    st.write("### 🏗️ Gestão de Obras")
+    with st.form("n_obra"):
+        n = st.text_input("Nome")
+        v = st.number_input("Orçamento", min_value=0.0)
+        if st.form_submit_button("SALVAR"):
             supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
             st.success("Obra cadastrada!")
 
-elif pagina == "💸 Lançar Gasto":
-    st.write("### 💸 Novo Gasto")
+elif pag == '💸 GASTO':
+    st.write("### 💸 Lançar Despesa")
     obras, cats = listar_obras(), listar_categorias()
     if obras:
         with st.form("f_gasto"):
             o = st.selectbox("Obra", list(obras.keys()))
             c = st.selectbox("Categoria", list(cats.keys()))
-            d = st.text_input("Descrição do Gasto")
-            v = st.number_input("Valor Pago", min_value=0.0)
+            d = st.text_input("Descrição")
+            v = st.number_input("Valor", min_value=0.0)
             if st.form_submit_button("REGISTRAR"):
                 supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "descricao": d, "valor": v}).execute()
-                st.success("Lançado!")
+                st.success("Gasto salvo!")
 
-elif pagina == "📋 Histórico de Gastos":
-    st.write("### 📋 Lista de Lançamentos")
+elif pag == '📋 LISTA':
+    st.write("### 📋 Histórico")
     obras = listar_obras()
     if obras:
-        o_sel = st.selectbox("Filtrar por:", list(obras.keys()))
-        dados = supabase.table("lancamentos_obra").select("id, descricao, valor").eq("obra_id", obras[o_sel]).execute().data
+        o_sel = st.selectbox("Obra:", list(obras.keys()))
+        dados = supabase.table("lancamentos_obra").select("id, descricao, valor").eq("id", obras[o_sel]).execute().data
         for d in dados:
-            st.markdown(f"""
-                <div class="data-card" style="margin-bottom:8px; display:flex; justify-content:space-between;">
-                    <span style="font-size:13px;">{d['descricao']}</span>
-                    <b style="color:#d32f2f;">{formatar_real(d['valor'])}</b>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"<div class='data-card' style='margin-bottom:5px; padding:10px; display:flex; justify-content:space-between;'><span>{d['descricao']}</span><b>{formatar_real(d['valor'])}</b></div>", unsafe_allow_html=True)
