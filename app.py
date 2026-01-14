@@ -16,37 +16,46 @@ supabase = get_supabase()
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="ROSECON Pro", layout="centered")
 
-# Função para formatar moeda (Real Brasileiro)
 def formatar_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
 
-# CSS para Menu Minimalista e Espaçamento Superior Reduzido
+# CSS Otimizado para Celulares Estreitos
 st.markdown("""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
     
-    /* Espaçamento superior mínimo */
-    .block-container { padding-top: 1rem !important; }
-    .header-box { text-align: center; margin-top: 0px; margin-bottom: 5px; }
+    /* Remove todo o respiro superior */
+    .block-container { padding-top: 0.5rem !important; padding-bottom: 0rem !important; }
+    .header-box { text-align: center; margin-bottom: 2px; }
 
+    /* Menu Horizontal Ultra Compacto */
+    div[data-testid="column"] {
+        padding: 0 !important;
+        flex: 1 1 0% !important;
+        min-width: 0 !important;
+    }
+    
     div.stButton > button {
         border: none !important;
         background-color: transparent !important;
         color: #555 !important;
-        font-size: 12px !important;
-        font-weight: 600 !important;
-        height: auto !important;
-        padding: 2px 0px !important;
-        box-shadow: none !important;
+        font-size: 10px !important; /* Fonte reduzida para caber */
+        font-weight: 700 !important;
+        line-height: 1.1 !important;
+        padding: 0px !important;
+        width: 100% !important;
+        text-transform: uppercase;
     }
     
+    /* Ajuste de ícone */
+    .icon-text { font-size: 16px; margin-bottom: 2px; display: block; }
+
     .data-card {
         background-color: white;
-        padding: 15px;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        border: 1px solid #f0f0f0;
-        margin-bottom: 15px;
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid #eee;
+        margin-top: 10px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -54,12 +63,12 @@ st.markdown("""
 # --- CABEÇALHO ---
 st.markdown('<div class="header-box">', unsafe_allow_html=True)
 if os.path.exists("LOGOMARCA.jpeg"):
-    st.image("LOGOMARCA.jpeg", width=160)
+    st.image("LOGOMARCA.jpeg", width=140)
 else:
-    st.markdown("<h3 style='margin:0;'>ROSECON ENGENHARIA</h3>", unsafe_allow_html=True)
+    st.markdown("<h4 style='margin:0;'>ROSECON</h4>", unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- NAVEGAÇÃO HORIZONTAL ---
+# --- NAVEGAÇÃO HORIZONTAL (FONTES REDUZIDAS) ---
 if 'pagina' not in st.session_state:
     st.session_state.pagina = 'RESUMO'
 
@@ -73,7 +82,7 @@ with m3:
 with m4:
     if st.button("👷\nOBRA"): st.session_state.pagina = 'OBRA'; st.rerun()
 
-st.markdown("<hr style='margin:5px 0px; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
+st.markdown("<hr style='margin:2px 0px; border-top: 1px solid #ddd;'>", unsafe_allow_html=True)
 
 # --- FUNÇÕES ---
 def listar_obras():
@@ -92,31 +101,28 @@ if pag == 'RESUMO':
     if obras:
         o_nome = st.selectbox("Obra", list(obras.keys()), label_visibility="collapsed")
         id_o = obras[o_nome]
-        
         info = supabase.table("obras").select("*").eq("id", id_o).single().execute().data
         res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': id_o}).execute()
-        
         gasto = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
         orc = float(info['orcamento_previsto'])
         
         st.markdown(f"""
             <div class="data-card">
-                <small style="color:#999;">Gasto Total Acumulado</small>
-                <h2 style="margin:0; color:#e63946;">{formatar_real(gasto)}</h2>
-                <div style="display:flex; justify-content:space-between; margin-top:10px; border-top:1px solid #eee; padding-top:5px;">
-                    <small><b>Orçado:</b> {formatar_real(orc)}</small>
-                    <small><b>Saldo:</b> {formatar_real(orc-gasto)}</small>
+                <small style="color:#888;">GASTO ACUMULADO</small>
+                <h2 style="margin:0; color:#e63946; font-size:24px;">{formatar_real(gasto)}</h2>
+                <div style="display:flex; justify-content:space-between; margin-top:8px; border-top:1px solid #eee; padding-top:5px;">
+                    <small><b>ORÇADO:</b><br>{formatar_real(orc)}</small>
+                    <small style="text-align:right;"><b>SALDO:</b><br>{formatar_real(orc-gasto)}</small>
                 </div>
             </div>
         """, unsafe_allow_html=True)
         
         if res_s.data:
             df = pd.DataFrame(res_s.data)
-            # Formata os nomes das categorias e valores para o gráfico
             st.bar_chart(df.set_index('nome_categoria'))
 
 elif pag == 'GASTO':
-    st.write("### 💸 Registrar Gasto")
+    st.write("##### 💸 Registrar Gasto")
     obras, cats = listar_obras(), listar_categorias()
     with st.container():
         st.markdown('<div class="data-card">', unsafe_allow_html=True)
@@ -127,29 +133,29 @@ elif pag == 'GASTO':
             v = st.number_input("Valor (R$)", min_value=0.0, step=0.01)
             if st.form_submit_button("CONCLUIR"):
                 supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "descricao": d, "valor": v}).execute()
-                st.success("Lançado!")
+                st.success("Salvo!")
         st.markdown('</div>', unsafe_allow_html=True)
 
 elif pag == 'LISTA':
-    st.write("### 📋 Histórico")
+    st.write("##### 📋 Histórico")
     obras = listar_obras()
     if obras:
         o_sel = st.selectbox("Obra", list(obras.keys()))
         dados = supabase.table("lancamentos_obra").select("id, descricao, valor").eq("obra_id", obras[o_sel]).execute().data
         for d in dados:
             st.markdown(f"""
-                <div style="background:white; padding:12px; border-radius:8px; margin-bottom:8px; border:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-size:14px;">{d['descricao']}</span>
-                    <b style="color:#d32f2f;">{formatar_real(d['valor'])}</b>
+                <div style="background:white; padding:10px; border-radius:8px; margin-bottom:6px; border:1px solid #f0f0f0; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:12px;">{d['descricao']}</span>
+                    <b style="color:#d32f2f; font-size:12px;">{formatar_real(d['valor'])}</b>
                 </div>
             """, unsafe_allow_html=True)
 
 elif pag == 'OBRA':
-    st.write("### 👷 Nova Obra")
+    st.write("##### 👷 Nova Obra")
     with st.container():
         st.markdown('<div class="data-card">', unsafe_allow_html=True)
-        n = st.text_input("Nome da Obra")
-        v = st.number_input("Orçamento Previsto (R$)", min_value=0.0, step=100.0)
+        n = st.text_input("Nome")
+        v = st.number_input("Orçamento", min_value=0.0, step=100.0)
         if st.button("SALVAR OBRA"):
             supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
             st.success("Obra cadastrada!")
