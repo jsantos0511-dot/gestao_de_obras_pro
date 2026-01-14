@@ -16,92 +16,97 @@ supabase = get_supabase()
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="ROSECON", layout="centered")
 
-# CSS para Menu Superior Slim e Estilo Executivo
+# CSS Avançado para Design de App
 st.markdown("""
     <style>
-    /* Esconde menus nativos */
+    /* Esconde elementos padrão */
     [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
     
-    /* Logomarca e Título */
-    .header-container { text-align: center; margin-top: -50px; }
-    .company-name { font-size: 18px; font-weight: bold; color: #333; margin-top: 5px; }
-
-    /* Estilo dos botões do menu superior */
+    /* Container da Logo */
+    .logo-box { text-align: center; padding: 10px 0; margin-top: -40px; }
+    
+    /* Menu Estilo Segmentado */
+    .stSelectbox label { display: none; } /* Esconde label do seletor se usado */
+    
     div.stButton > button {
-        border-radius: 5px;
-        height: 45px;
-        padding: 0px;
-        font-size: 14px;
-        background-color: #f8f9fa;
-        border: 1px solid #ddd;
+        border: none;
+        background-color: transparent;
+        color: #666;
+        font-weight: 500;
+        border-bottom: 2px solid transparent;
+        border-radius: 0px;
+        height: 50px;
+        transition: 0.3s;
     }
     
-    /* Destaque para o botão ativo (opcional, simulado por cores) */
+    div.stButton > button:hover, div.stButton > button:focus {
+        color: #007bff;
+        border-bottom: 2px solid #007bff;
+        background-color: transparent;
+    }
+
+    /* Cards de Informação */
     .metric-card {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 8px;
-        border: 1px solid #eee;
-        box-shadow: 0px 2px 4px rgba(0,0,0,0.05);
-        margin-top: 10px;
+        background: linear-gradient(135deg, #ffffff 0%, #f1f4f9 100%);
+        padding: 20px;
+        border-radius: 15px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        margin: 10px 0;
+        border: 1px solid #e1e4e8;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- CABEÇALHO: LOGO + NOME DISCRETO ---
-st.markdown('<div class="header-container">', unsafe_allow_html=True)
+# --- TOPO: LOGO ---
+st.markdown('<div class="logo-box">', unsafe_allow_html=True)
 if os.path.exists("LOGOMARCA.jpeg"):
-    st.image("LOGOMARCA.jpeg", width=150)
+    st.image("LOGOMARCA.jpeg", width=180)
 else:
-    st.markdown('<div class="company-name">ROSECON ENGENHARIA</div>', unsafe_allow_html=True)
+    st.title("ROSECON")
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- MENU SUPERIOR HORIZONTAL ---
-# Criando 4 colunas iguais logo abaixo da logo
+# --- NAVEGAÇÃO SEGMENTADA ---
 if 'pagina' not in st.session_state:
-    st.session_state.pagina = 'Resumo'
+    st.session_state.pagina = 'RESUMO'
 
+# Barra de navegação horizontal slim
 m1, m2, m3, m4 = st.columns(4)
 with m1:
-    if st.button("📊\nResumo"): st.session_state.pagina = 'Resumo'; st.rerun()
+    if st.button("📊\nRESUMO"): st.session_state.pagina = 'RESUMO'; st.rerun()
 with m2:
-    if st.button("💸\nGasto"): st.session_state.pagina = 'Gasto'; st.rerun()
+    if st.button("💸\nGASTO"): st.session_state.pagina = 'GASTO'; st.rerun()
 with m3:
-    if st.button("📋\nLista"): st.session_state.pagina = 'Lista'; st.rerun()
+    if st.button("📋\nLISTA"): st.session_state.pagina = 'LISTA'; st.rerun()
 with m4:
-    if st.button("⚙️\nObra"): st.session_state.pagina = 'Obra'; st.rerun()
+    if st.button("⚙️\nOBRA"): st.session_state.pagina = 'OBRA'; st.rerun()
 
-st.divider()
+st.markdown("---")
 
-# --- FUNÇÕES DE BANCO ---
+# --- LÓGICA DE DADOS ---
 def listar_obras():
     res = supabase.table("obras").select("id, nome_obra").execute()
     return {item['nome_obra']: item['id'] for item in res.data}
 
-def listar_categorias():
-    res = supabase.table("categorias_obra").select("id, nome_categoria").order("nome_categoria").execute()
-    return {item['nome_categoria']: item['id'] for item in res.data}
-
-# --- CONTEÚDO DAS PÁGINAS ---
+# --- PÁGINAS ---
 pag = st.session_state.pagina
 
-if pag == 'Resumo':
+if pag == 'RESUMO':
     obras = listar_obras()
     if obras:
-        o_nome = st.selectbox("Selecione a Obra", list(obras.keys()))
+        o_nome = st.selectbox("Obra", list(obras.keys()))
         id_o = obras[o_nome]
         
         info = supabase.table("obras").select("*").eq("id", id_o).single().execute().data
         res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': id_o}).execute()
         
-        gasto_total = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
-        orcamento = float(info['orcamento_previsto'])
+        gasto = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
+        orc = float(info['orcamento_previsto'])
         
         st.markdown(f"""
             <div class="metric-card">
-                <small>Investimento Total</small><br>
-                <b style="font-size:20px; color:#d32f2f;">Gasto: R$ {gasto_total:,.2f}</b><br>
-                <small>Saldo: R$ {(orcamento - gasto_total):,.2f}</small>
+                <p style="color:#666; font-size:14px; margin:0;">Status Financeiro</p>
+                <h3 style="margin:5px 0; color:#1a1a1a;">R$ {gasto:,.2f}</h3>
+                <p style="color:#28a745; font-size:12px; margin:0;">Disponível: R$ {(orc-gasto):,.2f}</p>
             </div>
         """, unsafe_allow_html=True)
         
@@ -109,36 +114,41 @@ if pag == 'Resumo':
             df = pd.DataFrame(res_s.data)
             st.bar_chart(df.set_index('nome_categoria'))
 
-elif pag == 'Gasto':
-    st.write("### Novo Gasto")
-    obras, cats = listar_obras(), listar_categorias()
-    if obras:
-        with st.form("form_gasto", clear_on_submit=True):
-            o = st.selectbox("Obra", list(obras.keys()))
-            c = st.selectbox("Categoria", list(cats.keys()))
-            d = st.text_input("Descrição")
-            v = st.number_input("Valor (R$)", min_value=0.0)
-            if st.form_submit_button("REGISTRAR"):
-                supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "descricao": d, "valor": v}).execute()
-                st.success("Lançado!")
+elif pag == 'GASTO':
+    st.subheader("Novo Registro")
+    obras = listar_obras()
+    # Puxa categorias cadastradas
+    res_cat = supabase.table("categorias_obra").select("id, nome_categoria").execute()
+    cats = {c['nome_categoria']: c['id'] for c in res_cat.data}
+    
+    with st.form("form_clean", clear_on_submit=True):
+        o = st.selectbox("Selecione a Obra", list(obras.keys()))
+        c = st.selectbox("Categoria", list(cats.keys()))
+        d = st.text_input("Descrição do Material")
+        v = st.number_input("Valor Pago", min_value=0.0)
+        if st.form_submit_button("CONCLUIR LANÇAMENTO"):
+            supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "descricao": d, "valor": v}).execute()
+            st.success("Lançado com sucesso!")
 
-elif pag == 'Lista':
-    st.write("### Histórico")
+elif pag == 'LISTA':
+    st.subheader("Histórico de Gastos")
     obras = listar_obras()
     if obras:
-        o_sel = st.selectbox("Obra", list(obras.keys()))
+        o_sel = st.selectbox("Filtrar Obra", list(obras.keys()))
         dados = supabase.table("lancamentos_obra").select("id, descricao, valor").eq("obra_id", obras[o_sel]).execute().data
         for d in dados:
-            with st.expander(f"{d['descricao']} - R$ {d['valor']}"):
-                if st.button("Remover", key=d['id']):
-                    supabase.table("lancamentos_obra").delete().eq("id", d['id']).execute()
-                    st.rerun()
+            st.markdown(f"""
+                <div style="padding:10px; border-bottom:1px solid #eee; display:flex; justify-content:space-between;">
+                    <span>{d['descricao']}</span>
+                    <b>R$ {d['valor']:,.2f}</b>
+                </div>
+            """, unsafe_allow_html=True)
 
-elif pag == 'Obra':
-    st.write("### Configurar Obra")
-    with st.form("nova_obra"):
-        n = st.text_input("Nome")
-        v = st.number_input("Orçamento", min_value=0.0)
-        if st.form_submit_button("CRIAR"):
+elif pag == 'OBRA':
+    st.subheader("Nova Obra")
+    with st.form("nova"):
+        n = st.text_input("Nome do Projeto")
+        v = st.number_input("Orçamento Previsto", min_value=0.0)
+        if st.form_submit_button("CADASTRAR"):
             supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
-            st.success("Obra cadastrada!")
+            st.rerun()
