@@ -19,41 +19,45 @@ st.set_page_config(page_title="ROSECON Pro", layout="centered")
 def formatar_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
 
-# CSS Otimizado
+# CSS PARA FORÇAR HORIZONTALIDADE NO CELULAR
 st.markdown("""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
     .block-container { padding-top: 0.5rem !important; }
-    .header-box { text-align: center; margin-bottom: 5px; }
+    
+    /* FORÇA AS COLUNAS A FICAREM LADO A LADO */
+    [data-testid="column"] {
+        width: 33% !important;
+        flex: 1 1 33% !important;
+        min-width: 33% !important;
+    }
+    
+    [data-testid="stHorizontalBlock"] {
+        display: flex !important;
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+    }
 
-    /* Menu de 3 Itens - Mais espaço para os dedos */
     div.stButton > button {
         border: none !important;
         background-color: transparent !important;
-        color: #444 !important;
+        color: #333 !important;
         font-size: 11px !important;
-        font-weight: 700 !important;
-        padding: 5px 0px !important;
-        width: 100% !important;
+        font-weight: bold !important;
+        padding: 0px !important;
         text-transform: uppercase;
+        width: 100%;
     }
-    
+
+    .header-box { text-align: center; margin-bottom: 5px; }
     .data-card {
         background-color: white;
         padding: 15px;
         border-radius: 12px;
         border: 1px solid #eee;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        margin-top: 10px;
-    }
-
-    /* Botão Voltar Especial */
-    .btn-voltar button {
-        background-color: #f8f9fa !important;
-        border: 1px solid #ddd !important;
-        border-radius: 8px !important;
-        height: 35px !important;
-        margin-bottom: 15px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -61,16 +65,16 @@ st.markdown("""
 # --- CABEÇALHO ---
 st.markdown('<div class="header-box">', unsafe_allow_html=True)
 if os.path.exists("LOGOMARCA.jpeg"):
-    st.image("LOGOMARCA.jpeg", width=150)
+    st.image("LOGOMARCA.jpeg", width=140)
 else:
     st.markdown("<h4 style='margin:0;'>ROSECON</h4>", unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- LÓGICA DE NAVEGAÇÃO ---
+# --- NAVEGAÇÃO ---
 if 'pagina' not in st.session_state:
     st.session_state.pagina = 'RESUMO'
 
-# MENU DE 3 ITENS (Obras em primeiro)
+# O comando columns agora será forçado pelo CSS acima
 m1, m2, m3 = st.columns(3)
 with m1:
     if st.button("👷\nOBRAS"): st.session_state.pagina = 'OBRA'; st.rerun()
@@ -90,16 +94,13 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").order("nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- RENDERIZAÇÃO ---
+# --- TELAS ---
 pag = st.session_state.pagina
 
-# Botão de Voltar para o Resumo (Aparece em todas menos no próprio resumo)
 if pag != 'RESUMO':
-    st.markdown('<div class="btn-voltar">', unsafe_allow_html=True)
     if st.button("⬅️ VOLTAR PARA RESUMO"):
         st.session_state.pagina = 'RESUMO'
         st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
 
 if pag == 'RESUMO':
     obras = listar_obras()
@@ -123,33 +124,28 @@ if pag == 'RESUMO':
         """, unsafe_allow_html=True)
         
         if res_s.data:
-            st.write("---")
             st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
-    else:
-        st.info("Toque em 'OBRAS' para cadastrar seu primeiro projeto.")
 
 elif pag == 'OBRA':
-    st.write("### 👷 Gestão de Obras")
+    st.write("### 👷 Nova Obra")
     with st.form("nova_obra"):
-        n = st.text_input("Nome do Empreendimento")
-        v = st.number_input("Orçamento Planejado (R$)", min_value=0.0)
-        if st.form_submit_button("CADASTRAR NOVA OBRA"):
+        n = st.text_input("Nome")
+        v = st.number_input("Orçamento", min_value=0.0)
+        if st.form_submit_button("CADASTRAR"):
             supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
-            st.success("Obra salva!")
             st.session_state.pagina = 'RESUMO'
             st.rerun()
 
 elif pag == 'GASTO':
-    st.write("### 💸 Lançar Despesa")
+    st.write("### 💸 Lançar Gasto")
     obras, cats = listar_obras(), listar_categorias()
     with st.form("f_gasto"):
         o = st.selectbox("Obra", list(obras.keys()))
         c = st.selectbox("Categoria", list(cats.keys()))
-        d = st.text_input("O que foi comprado?")
-        v = st.number_input("Valor pago", min_value=0.0)
-        if st.form_submit_button("CONFIRMAR LANÇAMENTO"):
+        d = st.text_input("Descrição")
+        v = st.number_input("Valor", min_value=0.0)
+        if st.form_submit_button("SALVAR"):
             supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "descricao": d, "valor": v}).execute()
-            st.success("Gasto registrado!")
             st.session_state.pagina = 'RESUMO'
             st.rerun()
 
@@ -157,12 +153,7 @@ elif pag == 'LISTA':
     st.write("### 📋 Histórico")
     obras = listar_obras()
     if obras:
-        o_sel = st.selectbox("Filtrar por:", list(obras.keys()))
+        o_sel = st.selectbox("Filtrar:", list(obras.keys()))
         dados = supabase.table("lancamentos_obra").select("id, descricao, valor").eq("obra_id", obras[o_sel]).execute().data
         for d in dados:
-            st.markdown(f"""
-                <div style="background:white; padding:12px; border-radius:8px; margin-bottom:8px; border:1px solid #eee; display:flex; justify-content:space-between;">
-                    <span style="font-size:13px;">{d['descricao']}</span>
-                    <b style="color:#d32f2f;">{formatar_real(d['valor'])}</b>
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f"<div class='data-card' style='margin-bottom:5px; padding:10px; display:flex; justify-content:space-between;'><span style='font-size:12px;'>{d['descricao']}</span><b>{formatar_real(d['valor'])}</b></div>", unsafe_allow_html=True)
