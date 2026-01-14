@@ -3,7 +3,7 @@ import pandas as pd
 from supabase import create_client, Client
 import os
 
-# --- CONFIGURAÇÕES DO BANCO ---
+# --- CONEXÃO ---
 SUPABASE_URL = "https://ryzcivhjohgtzixqflwo.supabase.co"
 SUPABASE_KEY = "sb_publishable_Mbx3FHs_VoprLY2e9d1QMQ_5309Bglr"
 
@@ -14,47 +14,57 @@ def get_supabase():
 supabase = get_supabase()
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="ROSECON Engenharia", layout="centered")
+st.set_page_config(page_title="ROSECON", layout="centered")
 
-# CSS para botões grandes e esconder menus nativos
+# CSS para Menu Inferior e Estilo Clean
 st.markdown("""
     <style>
-    [data-testid="stSidebar"] {display: none;}
-    [data-testid="stHeader"] {display: none;}
-    .stButton>button {
-        width: 100%;
-        height: 80px;
-        font-size: 20px;
-        font-weight: bold;
-        border-radius: 15px;
-        margin-bottom: 10px;
-    }
+    /* Esconde menus nativos */
+    [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
+    
+    /* Logomarca Pequena */
+    .logo-container { text-align: center; margin-bottom: 20px; }
+    .logo-img { width: 150px; }
+
+    /* Cards de Resumo */
     .metric-card {
-        background-color: #f8f9fa;
-        padding: 20px;
-        border-radius: 15px;
-        border-left: 5px solid #007bff;
-        color: #333;
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #eee;
+        box-shadow: 0px 2px 4px rgba(0,0,0,0.05);
         margin-bottom: 15px;
+    }
+    
+    /* Menu Inferior Fixo */
+    .nav-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        background-color: #ffffff;
+        display: flex;
+        justify-content: space-around;
+        padding: 10px 0;
+        border-top: 1px solid #ddd;
+        z-index: 999;
     }
     </style>
 """, unsafe_allow_html=True)
 
-# --- LOGOMARCA (Com verificação de erro) ---
+# --- NAVEGAÇÃO ---
+if 'pagina' not in st.session_state:
+    st.session_state.pagina = '📊'
+
+# --- TOPO: LOGOMARCA REDUZIDA ---
+st.markdown('<div class="logo-container">', unsafe_allow_html=True)
 if os.path.exists("LOGOMARCA.jpeg"):
-    st.image("LOGOMARCA.jpeg", use_container_width=True)
+    st.image("LOGOMARCA.jpeg", width=180) # Tamanho reduzido
 else:
-    st.title("ROSECON ENGENHARIA")
+    st.subheader("ROSECON")
+st.markdown('</div>', unsafe_allow_html=True)
 
-# --- LÓGICA DE NAVEGAÇÃO ---
-if 'tela' not in st.session_state:
-    st.session_state.tela = 'home'
-
-def mudar_tela(nome):
-    st.session_state.tela = nome
-    st.rerun()
-
-# --- FUNÇÕES DE DADOS ---
+# --- FUNÇÕES ---
 def listar_obras():
     res = supabase.table("obras").select("id, nome_obra").execute()
     return {item['nome_obra']: item['id'] for item in res.data}
@@ -63,88 +73,76 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").order("nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- RENDERIZAÇÃO ---
+# --- CONTEÚDO ---
+pag = st.session_state.pagina
 
-# Botão Voltar (aparece em todas as telas exceto na home)
-if st.session_state.tela != 'home':
-    if st.button("⬅️ VOLTAR AO MENU"):
-        mudar_tela('home')
-
-# 🏠 TELA PRINCIPAL
-if st.session_state.tela == 'home':
-    st.write("### Painel de Gestão")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("📊 RESUMO"): mudar_tela('dash')
-        if st.button("📋 LISTAR"): mudar_tela('hist')
-    with col2:
-        if st.button("💸 GASTO"): mudar_tela('gasto')
-        if st.button("⚙️ OBRAS"): mudar_tela('config')
-
-# 📊 DASHBOARD
-elif st.session_state.tela == 'dash':
-    st.subheader("Resumo Financeiro")
+if pag == '📊':
+    st.write("### Resumo")
     obras = listar_obras()
     if obras:
-        nome_obra = st.selectbox("Selecione a Obra", list(obras.keys()))
-        id_obra = obras[nome_obra]
+        o_nome = st.selectbox("Obra", list(obras.keys()), label_visibility="collapsed")
+        id_o = obras[o_nome]
         
-        # Totais
-        obra_info = supabase.table("obras").select("*").eq("id", id_obra).single().execute().data
-        res_soma = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': id_obra}).execute()
+        info = supabase.table("obras").select("*").eq("id", id_o).single().execute().data
+        res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': id_o}).execute()
         
-        total_gasto = sum(float(item['total']) for item in res_soma.data) if res_soma.data else 0
-        orcamento = float(obra_info['orcamento_previsto'])
+        gasto = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
+        orc = float(info['orcamento_previsto'])
         
         st.markdown(f"""
             <div class="metric-card">
-                <small>Orçamento: R$ {orcamento:,.2f}</small><br>
-                <b style="font-size:1.5em; color:red">Gasto: R$ {total_gasto:,.2f}</b><br>
-                <small style="color:green">Saldo: R$ {(orcamento - total_gasto):,.2f}</small>
+                <p style="margin:0; color:#666;">Gasto Total</p>
+                <h2 style="margin:0; color:#d32f2f;">R$ {gasto:,.2f}</h2>
+                <p style="margin:0; color:#2e7d32; font-size:14px;">Saldo: R$ {(orc-gasto):,.2f}</p>
             </div>
         """, unsafe_allow_html=True)
         
-        if res_soma.data:
-            df = pd.DataFrame(res_soma.data)
-            st.bar_chart(df.set_index('nome_categoria'))
+        if res_s.data:
+            st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
 
-# 💸 LANÇAR GASTO
-elif st.session_state.tela == 'gasto':
-    st.subheader("Novo Lançamento")
-    obras = listar_obras()
-    cats = listar_categorias()
-    if obras:
-        with st.form("f_gasto"):
-            o = st.selectbox("Obra", list(obras.keys()))
-            c = st.selectbox("Categoria", list(cats.keys()))
-            d = st.text_input("Descrição")
-            v = st.number_input("Valor (R$)", min_value=0.0)
-            if st.form_submit_button("SALVAR"):
-                supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "descricao": d, "valor": v}).execute()
-                st.success("Registrado!")
-                mudar_tela('home')
+elif pag == '➕':
+    st.write("### Novo Gasto")
+    obras, cats = listar_obras(), listar_categorias()
+    with st.form("f", clear_on_submit=True):
+        o = st.selectbox("Obra", list(obras.keys()))
+        c = st.selectbox("Categoria", list(cats.keys()))
+        d = st.text_input("Descrição")
+        v = st.number_input("Valor", min_value=0.0)
+        if st.form_submit_button("SALVAR GASTO"):
+            supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "descricao": d, "valor": v}).execute()
+            st.success("Salvo!")
 
-# 📋 HISTÓRICO
-elif st.session_state.tela == 'hist':
-    st.subheader("Histórico Detalhado")
+elif pag == '📋':
+    st.write("### Histórico")
     obras = listar_obras()
     if obras:
-        o_sel = st.selectbox("Obra", list(obras.keys()))
-        gastos = supabase.table("lancamentos_obra").select("id, data_gasto, descricao, valor").eq("obra_id", obras[o_sel]).order("data_gasto", desc=True).execute().data
-        for g in gastos:
-            with st.expander(f"{g['data_gasto']} - {g['descricao']}"):
-                st.write(f"Valor: R$ {g['valor']}")
-                if st.button("Excluir", key=g['id']):
-                    supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute()
+        o_sel = st.selectbox("Filtrar Obra", list(obras.keys()))
+        dados = supabase.table("lancamentos_obra").select("id, descricao, valor").eq("obra_id", obras[o_sel]).execute().data
+        for d in dados:
+            with st.expander(f"{d['descricao']} - R$ {d['valor']}"):
+                if st.button("Excluir", key=d['id']):
+                    supabase.table("lancamentos_obra").delete().eq("id", d['id']).execute()
                     st.rerun()
 
-# ⚙️ CONFIGURAÇÕES
-elif st.session_state.tela == 'config':
-    st.subheader("Gerenciar Obras")
-    with st.form("f_obra"):
-        n = st.text_input("Nome da Obra")
-        v = st.number_input("Orçamento Previsto", min_value=0.0)
-        if st.form_submit_button("CADASTRAR OBRA"):
-            supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
-            st.success("Obra cadastrada!")
+elif pag == '⚙️':
+    st.write("### Configurações")
+    n = st.text_input("Nova Obra")
+    v = st.number_input("Orçamento", min_value=0.0)
+    if st.button("Cadastrar"):
+        supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
+        st.success("Obra criada!")
+
+# Espaço extra para não cobrir o conteúdo com o menu
+st.markdown("<br><br><br>", unsafe_allow_html=True)
+
+# --- MENU INFERIOR FIXO ---
+# Usamos colunas para simular os ícones de app
+c1, c2, c3, c4 = st.columns(4)
+with c1: 
+    if st.button("📊"): st.session_state.pagina = '📊'; st.rerun()
+with c2: 
+    if st.button("➕"): st.session_state.pagina = '➕'; st.rerun()
+with c3: 
+    if st.button("📋"): st.session_state.pagina = '📋'; st.rerun()
+with c4: 
+    if st.button("⚙️"): st.session_state.pagina = '⚙️'; st.rerun()
