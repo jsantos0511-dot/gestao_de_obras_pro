@@ -3,7 +3,7 @@ import pandas as pd
 from supabase import create_client, Client
 from datetime import datetime
 
-# --- CONFIGURAÇÕES DO BANCO DE DADOS ---
+# --- CONFIGURAÇÕES ---
 SUPABASE_URL = "https://ryzcivhjohgtzixqflwo.supabase.co"
 SUPABASE_KEY = "sb_publishable_Mbx3FHs_VoprLY2e9d1QMQ_5309Bglr"
 
@@ -13,7 +13,43 @@ def get_supabase():
 
 supabase = get_supabase()
 
-# --- FUNÇÕES AUXILIARES ---
+# --- ESTILIZAÇÃO PARA MENU COMPACTO ---
+st.set_page_config(page_title="Obras Pro", layout="centered")
+
+st.markdown("""
+    <style>
+    /* Estilo para os botões de navegação superiores */
+    .stButton > button {
+        border-radius: 20px;
+        height: 2.5em;
+        font-weight: bold;
+    }
+    .metric-card {
+        background-color: #161b22;
+        padding: 15px;
+        border-radius: 12px;
+        border: 1px solid #30363d;
+        margin-bottom: 10px;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- LÓGICA DE NAVEGAÇÃO (Estado da Sessão) ---
+if 'pagina' not in st.session_state:
+    st.session_state.pagina = 'Dashboard'
+
+# Criando o menu horizontal com botões
+col_m1, col_m2, col_m3 = st.columns(3)
+with col_m1:
+    if st.button("📊 Resumo"): st.session_state.pagina = 'Dashboard'
+with col_m2:
+    if st.button("💸 Gasto"): st.session_state.pagina = 'Lançar'
+with col_m3:
+    if st.button("⚙️ Obra"): st.session_state.pagina = 'Config'
+
+st.divider()
+
+# --- FUNÇÕES ---
 def listar_obras():
     res = supabase.table("obras").select("id, nome_obra").execute()
     return {item['nome_obra']: item['id'] for item in res.data}
@@ -22,115 +58,67 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").order("nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Obras Pro", layout="centered") # Centered é melhor para celular
+# --- RENDERIZAÇÃO DAS TELAS ---
 
-# Estilização CSS para botões e cards
-st.markdown("""
-    <style>
-    div.stButton > button {
-        width: 100%;
-        border-radius: 10px;
-        height: 3em;
-        background-color: #007bff;
-        color: white;
-    }
-    .metric-card {
-        background-color: #1e1e1e;
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #333;
-        margin-bottom: 10px;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-st.title("🏗️ Gestor de Obras")
-
-# --- NOVO SISTEMA DE MENU POR ABAS ---
-aba_dash, aba_gasto, aba_config = st.tabs(["📊 Resumo", "💸 Novo Gasto", "⚙️ Ajustes"])
-
-# --- ABA 1: DASHBOARD ---
-with aba_dash:
+if st.session_state.pagina == 'Dashboard':
+    st.subheader("Dashboard Financeiro")
     obras_dict = listar_obras()
     if obras_dict:
         obra_nome = st.selectbox("Selecione a Obra", list(obras_dict.keys()))
         id_obra = obras_dict[obra_nome]
-
-        # Busca dados financeiros
+        
+        # Dados da Obra
         obra_info = supabase.table("obras").select("*").eq("id", id_obra).single().execute().data
         gastos = supabase.table("lancamentos_obra").select("valor").eq("obra_id", id_obra).execute().data
         
         total_gasto = sum(float(item['valor']) for item in gastos)
         orcamento = float(obra_info['orcamento_previsto'])
-        saldo = orcamento - total_gasto
-
-        # Cards verticais (melhor para celular)
+        
+        # Cards de Resumo
         st.markdown(f"""
             <div class="metric-card">
-                <small>Orçamento Total</small><br>
-                <b>R$ {orcamento:,.2f}</b>
-            </div>
-            <div class="metric-card">
-                <small>Total Gasto</small><br>
-                <b style="color:#ff4b4b">R$ {total_gasto:,.2f}</b>
-            </div>
-            <div class="metric-card">
-                <small>Saldo Disponível</small><br>
-                <b style="color:#28a745">R$ {saldo:,.2f}</b>
+                <small>Investimento: R$ {orcamento:,.2f}</small><br>
+                <span style="font-size: 1.2em;">Gasto: <b style="color:#f85149">R$ {total_gasto:,.2f}</b></span><br>
+                <span style="font-size: 0.9em; color:#8b949e;">Saldo: R$ {(orcamento - total_gasto):,.2f}</span>
             </div>
         """, unsafe_allow_html=True)
-
+        
         if total_gasto > 0:
-            st.subheader("Gastos por Categoria")
             res_gastos = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': id_obra}).execute()
             if res_gastos.data:
                 df = pd.DataFrame(res_gastos.data)
                 st.bar_chart(df.set_index('nome_categoria'))
-    else:
-        st.info("Toque em 'Ajustes' para cadastrar sua primeira obra.")
 
-# --- ABA 2: LANÇAR GASTO ---
-with aba_gasto:
-    st.subheader("Registrar Despesa")
+elif st.session_state.pagina == 'Lançar':
+    st.subheader("Novo Lançamento")
     obras_dict = listar_obras()
-    categorias_dict = listar_categorias()
+    cats_dict = listar_categorias()
     
     if obras_dict:
-        obra_venda = st.selectbox("Obra destino", list(obras_dict.keys()), key="sel_obra")
-        cat_venda = st.selectbox("Categoria", list(categorias_dict.keys()), key="sel_cat")
-        desc = st.text_input("O que foi comprado?")
-        val = st.number_input("Valor pago (R$)", min_value=0.0, step=10.0)
-        data = st.date_input("Data", datetime.now())
-        
-        if st.button("Confirmar Lançamento"):
-            if desc and val > 0:
-                payload = {
-                    "obra_id": obras_dict[obra_venda],
-                    "categoria_id": categorias_dict[cat_venda],
-                    "descricao": desc,
-                    "valor": val,
-                    "data_gasto": data.isoformat()
-                }
-                supabase.table("lancamentos_obra").insert(payload).execute()
-                st.success("Gasto salvo!")
-                st.balloons()
-            else:
-                st.error("Preencha a descrição e o valor.")
-    else:
-        st.warning("Cadastre uma obra primeiro.")
+        with st.form("gasto_form", clear_on_submit=True):
+            obra = st.selectbox("Obra", list(obras_dict.keys()))
+            cat = st.selectbox("Categoria", list(cats_dict.keys()))
+            desc = st.text_input("Descrição")
+            val = st.number_input("Valor (R$)", min_value=0.0)
+            
+            if st.form_submit_button("Salvar Registro"):
+                if desc and val > 0:
+                    payload = {
+                        "obra_id": obras_dict[obra],
+                        "categoria_id": cats_dict[cat],
+                        "descricao": desc,
+                        "valor": val
+                    }
+                    supabase.table("lancamentos_obra").insert(payload).execute()
+                    st.success("Salvo!")
+                else:
+                    st.error("Preencha os campos.")
 
-# --- ABA 3: AJUSTES ---
-with aba_config:
-    st.subheader("Gerenciar Obras")
-    with st.expander("➕ Adicionar Nova Obra"):
-        nova_obra = st.text_input("Nome do Empreendimento")
-        verba = st.number_input("Verba Total Planejada", min_value=0.0)
-        if st.button("Cadastrar Obra"):
-            if nova_obra:
-                supabase.table("obras").insert({"nome_obra": nova_obra, "orcamento_previsto": verba}).execute()
-                st.success("Obra criada!")
-                st.rerun()
-
-    st.subheader("Categorias Ativas")
-    st.write(list(listar_categorias().keys()))
+elif st.session_state.pagina == 'Config':
+    st.subheader("Configurações")
+    with st.expander("Cadastrar Nova Obra"):
+        n_obra = st.text_input("Nome")
+        v_obra = st.number_input("Orçamento", min_value=0.0)
+        if st.button("Criar"):
+            supabase.table("obras").insert({"nome_obra": n_obra, "orcamento_previsto": v_obra}).execute()
+            st.rerun()
