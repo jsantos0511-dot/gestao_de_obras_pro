@@ -23,13 +23,13 @@ st.set_page_config(
 def formatar_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
 
-# CSS para remover o campo de seleção e estilizar botões laterais
+# CSS E JAVASCRIPT PARA FORÇAR FECHAMENTO
 st.markdown("""
     <style>
     .block-container { padding-top: 1rem !important; }
     .header-box { text-align: center; margin-bottom: 10px; }
     
-    /* Estilização dos botões da Sidebar para parecerem itens de menu */
+    /* Estilo dos botões da Sidebar */
     [data-testid="stSidebar"] div.stButton > button {
         width: 100% !important;
         border: none !important;
@@ -37,16 +37,11 @@ st.markdown("""
         color: white !important;
         text-align: left !important;
         font-size: 16px !important;
-        padding: 10px 0px !important;
+        padding: 12px 10px !important;
         border-bottom: 1px solid #3d3f4b !important;
         border-radius: 0px !important;
     }
     
-    [data-testid="stSidebar"] div.stButton > button:hover {
-        color: #007bff !important;
-        background-color: #262730 !important;
-    }
-
     .data-card {
         background-color: white;
         padding: 15px;
@@ -55,6 +50,18 @@ st.markdown("""
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     </style>
+
+    <script>
+    // Função para fechar a sidebar no mobile ao clicar em qualquer botão
+    var mainDocs = window.parent.document;
+    var buttons = mainDocs.querySelectorAll(".stSidebar button");
+    for (var i = 0; i < buttons.length; i++) {
+        buttons[i].addEventListener("click", function() {
+            var closeButton = mainDocs.querySelector('button[kind="headerNoPadding"]');
+            if (closeButton) closeButton.click();
+        });
+    }
+    </script>
 """, unsafe_allow_html=True)
 
 # --- LÓGICA DE NAVEGAÇÃO ---
@@ -65,20 +72,19 @@ if 'pagina' not in st.session_state:
 with st.sidebar:
     st.markdown("## 🏗️ MENU")
     
-    # Botões que funcionam como links e fecham o menu no celular
-    if st.sidebar.button("📊 RESUMO GERAL"):
+    if st.button("📊 RESUMO GERAL"):
         st.session_state.pagina = '📊 RESUMO'
         st.rerun()
         
-    if st.sidebar.button("👷 GERENCIAR OBRAS"):
+    if st.button("👷 GERENCIAR OBRAS"):
         st.session_state.pagina = '👷 OBRAS'
         st.rerun()
         
-    if st.sidebar.button("💸 LANÇAR GASTO"):
+    if st.button("💸 LANÇAR GASTO"):
         st.session_state.pagina = '💸 GASTO'
         st.rerun()
         
-    if st.sidebar.button("📋 HISTÓRICO"):
+    if st.button("📋 HISTÓRICO"):
         st.session_state.pagina = '📋 LISTA'
         st.rerun()
 
@@ -99,13 +105,13 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").order("nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- RENDERIZAÇÃO DAS TELAS ---
+# --- RENDERIZAÇÃO ---
 pag = st.session_state.pagina
 
 if pag == '📊 RESUMO':
     obras = listar_obras()
     if obras:
-        o_nome = st.selectbox("Escolha a Obra", list(obras.keys()))
+        o_nome = st.selectbox("Obra", list(obras.keys()))
         id_o = obras[o_nome]
         info = supabase.table("obras").select("*").eq("id", id_o).single().execute().data
         res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': id_o}).execute()
@@ -152,6 +158,6 @@ elif pag == '📋 LISTA':
     obras = listar_obras()
     if obras:
         o_sel = st.selectbox("Obra:", list(obras.keys()))
-        dados = supabase.table("lancamentos_obra").select("id, descricao, valor").eq("id", obras[o_sel]).execute().data
+        dados = supabase.table("lancamentos_obra").select("id, descricao, valor").eq("obra_id", obras[o_sel]).execute().data
         for d in dados:
             st.markdown(f"<div class='data-card' style='margin-bottom:5px; padding:10px; display:flex; justify-content:space-between;'><span>{d['descricao']}</span><b>{formatar_real(d['valor'])}</b></div>", unsafe_allow_html=True)
