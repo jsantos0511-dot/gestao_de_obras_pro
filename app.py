@@ -13,16 +13,19 @@ def get_supabase():
 
 supabase = get_supabase()
 
-# --- ESTILIZAÇÃO PARA MENU COMPACTO ---
-st.set_page_config(page_title="Obras Pro", layout="centered")
+# --- CONFIGURAÇÃO DA PÁGINA ---
+# 'initial_sidebar_state="collapsed"' faz o menu começar recolhido (as 3 barrinhas)
+st.set_page_config(
+    page_title="Obras Pro", 
+    layout="centered", 
+    initial_sidebar_state="collapsed" 
+)
 
+# Estilização para deixar os cards bonitos no mobile
 st.markdown("""
     <style>
-    /* Estilo para os botões de navegação superiores */
-    .stButton > button {
-        border-radius: 20px;
-        height: 2.5em;
-        font-weight: bold;
+    [data-testid="stSidebar"] {
+        background-color: #0e1117;
     }
     .metric-card {
         background-color: #161b22;
@@ -34,20 +37,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- LÓGICA DE NAVEGAÇÃO (Estado da Sessão) ---
-if 'pagina' not in st.session_state:
-    st.session_state.pagina = 'Dashboard'
-
-# Criando o menu horizontal com botões
-col_m1, col_m2, col_m3 = st.columns(3)
-with col_m1:
-    if st.button("📊 Resumo"): st.session_state.pagina = 'Dashboard'
-with col_m2:
-    if st.button("💸 Gasto"): st.session_state.pagina = 'Lançar'
-with col_m3:
-    if st.button("⚙️ Obra"): st.session_state.pagina = 'Config'
-
-st.divider()
+# --- MENU LATERAL (HAMBÚRGUER) ---
+with st.sidebar:
+    st.title("🏗️ Menu")
+    pagina = st.radio("Navegar para:", ["📊 Dashboard", "💸 Lançar Gasto", "⚙️ Configurações"])
+    st.divider()
+    st.caption("Versão 1.0 - Gestão de Obras")
 
 # --- FUNÇÕES ---
 def listar_obras():
@@ -58,50 +53,52 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").order("nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- RENDERIZAÇÃO DAS TELAS ---
+# --- LÓGICA DAS TELAS ---
 
-if st.session_state.pagina == 'Dashboard':
-    st.subheader("Dashboard Financeiro")
+if pagina == "📊 Dashboard":
+    st.header("Resumo da Obra")
     obras_dict = listar_obras()
     if obras_dict:
-        obra_nome = st.selectbox("Selecione a Obra", list(obras_dict.keys()))
+        obra_nome = st.selectbox("Escolha a Obra", list(obras_dict.keys()))
         id_obra = obras_dict[obra_nome]
         
-        # Dados da Obra
+        # Dados Financeiros
         obra_info = supabase.table("obras").select("*").eq("id", id_obra).single().execute().data
         gastos = supabase.table("lancamentos_obra").select("valor").eq("obra_id", id_obra).execute().data
         
         total_gasto = sum(float(item['valor']) for item in gastos)
         orcamento = float(obra_info['orcamento_previsto'])
         
-        # Cards de Resumo
         st.markdown(f"""
             <div class="metric-card">
-                <small>Investimento: R$ {orcamento:,.2f}</small><br>
-                <span style="font-size: 1.2em;">Gasto: <b style="color:#f85149">R$ {total_gasto:,.2f}</b></span><br>
-                <span style="font-size: 0.9em; color:#8b949e;">Saldo: R$ {(orcamento - total_gasto):,.2f}</span>
+                <small>Orçamento: R$ {orcamento:,.2f}</small><br>
+                <b style="font-size:1.3em;">Gasto: R$ {total_gasto:,.2f}</b><br>
+                <small style="color:#3fb950">Disponível: R$ {(orcamento - total_gasto):,.2f}</small>
             </div>
         """, unsafe_allow_html=True)
-        
+
         if total_gasto > 0:
             res_gastos = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': id_obra}).execute()
             if res_gastos.data:
+                st.write("### Gastos por Categoria")
                 df = pd.DataFrame(res_gastos.data)
                 st.bar_chart(df.set_index('nome_categoria'))
+    else:
+        st.info("Abra o menu lateral (3 barrinhas) e cadastre uma obra em 'Configurações'.")
 
-elif st.session_state.pagina == 'Lançar':
-    st.subheader("Novo Lançamento")
+elif pagina == "💸 Lançar Gasto":
+    st.header("Novo Gasto")
     obras_dict = listar_obras()
     cats_dict = listar_categorias()
     
     if obras_dict:
-        with st.form("gasto_form", clear_on_submit=True):
+        with st.form("form_gasto"):
             obra = st.selectbox("Obra", list(obras_dict.keys()))
             cat = st.selectbox("Categoria", list(cats_dict.keys()))
-            desc = st.text_input("Descrição")
+            desc = st.text_input("Descrição do Gasto")
             val = st.number_input("Valor (R$)", min_value=0.0)
             
-            if st.form_submit_button("Salvar Registro"):
+            if st.form_submit_button("Salvar no Banco"):
                 if desc and val > 0:
                     payload = {
                         "obra_id": obras_dict[obra],
@@ -110,15 +107,18 @@ elif st.session_state.pagina == 'Lançar':
                         "valor": val
                     }
                     supabase.table("lancamentos_obra").insert(payload).execute()
-                    st.success("Salvo!")
+                    st.success("Lançamento realizado com sucesso!")
                 else:
-                    st.error("Preencha os campos.")
+                    st.warning("Preencha todos os campos corretamente.")
+    else:
+        st.error("Nenhuma obra cadastrada.")
 
-elif st.session_state.pagina == 'Config':
-    st.subheader("Configurações")
-    with st.expander("Cadastrar Nova Obra"):
-        n_obra = st.text_input("Nome")
-        v_obra = st.number_input("Orçamento", min_value=0.0)
-        if st.button("Criar"):
-            supabase.table("obras").insert({"nome_obra": n_obra, "orcamento_previsto": v_obra}).execute()
+elif pagina == "⚙️ Configurações":
+    st.header("Configurações")
+    with st.expander("➕ Adicionar Nova Obra"):
+        n = st.text_input("Nome da Obra")
+        v = st.number_input("Orçamento Total", min_value=0.0)
+        if st.button("Salvar Obra"):
+            supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
+            st.success("Obra cadastrada!")
             st.rerun()
