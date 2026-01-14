@@ -19,40 +19,36 @@ st.set_page_config(page_title="ROSECON Pro", layout="centered")
 def formatar_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
 
-# CSS PARA DIMINUIR ESPAÇO ENTRE ITENS
+# CSS PARA MENU MANUAL (HORIZONTAL TOTAL)
 st.markdown("""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
     .block-container { padding-top: 0.5rem !important; }
     
-    /* REMOVE O ESPAÇAMENTO ENTRE COLUNAS (GAP) */
-    [data-testid="stHorizontalBlock"] {
-        gap: 0rem !important;
-        display: flex !important;
-        justify-content: center !important; /* Centraliza o bloco do menu */
+    /* Container do Menu Manual */
+    .nav-container {
+        display: flex;
+        justify-content: center;
+        gap: 20px; /* AJUSTE AQUI O ESPAÇO ENTRE OS ITENS */
+        margin-bottom: 15px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
     }
 
-    /* AJUSTA A LARGURA DAS COLUNAS PARA FICAREM PRÓXIMAS */
-    [data-testid="column"] {
-        width: fit-content !important;
-        flex: 0 1 auto !important;
-        min-width: 80px !important; /* Define uma largura mínima pequena */
-        padding: 0px !important;
-        margin: 0px -5px !important; /* Margem negativa para aproximar ainda mais */
-    }
-    
+    /* Estilo dos botões invisíveis do Streamlit para sobrepor o menu */
     div.stButton > button {
-        border: none !important;
         background-color: transparent !important;
+        border: none !important;
         color: #333 !important;
         font-size: 11px !important;
         font-weight: bold !important;
-        padding: 0px !important;
         text-transform: uppercase;
-        width: 100%;
+        padding: 0 !important;
+        width: 80px !important; /* Largura fixa para cada item */
+        height: 50px !important;
     }
-
-    .header-box { text-align: center; margin-bottom: 2px; }
+    
+    .header-box { text-align: center; margin-bottom: 5px; }
     .data-card {
         background-color: white;
         padding: 15px;
@@ -71,22 +67,37 @@ else:
     st.markdown("<h4 style='margin:0;'>ROSECON</h4>", unsafe_allow_html=True)
 st.markdown('</div>', unsafe_allow_html=True)
 
-# --- NAVEGAÇÃO (3 ITENS JUNTINHOS) ---
+# --- NAVEGAÇÃO MANUAL (3 ITENS LADO A LADO) ---
 if 'pagina' not in st.session_state:
     st.session_state.pagina = 'RESUMO'
 
-# Criando colunas e forçando a aproximação
-m1, m2, m3 = st.columns(3)
-with m1:
-    if st.button("👷\nOBRAS"): st.session_state.pagina = 'OBRA'; st.rerun()
-with m2:
-    if st.button("💸\nGASTO"): st.session_state.pagina = 'GASTO'; st.rerun()
-with m3:
-    if st.button("📋\nLISTA"): st.session_state.pagina = 'LISTA'; st.rerun()
+# Criamos uma linha horizontal real usando colunas com largura mínima
+c1, c2, c3 = st.columns([1,1,1])
 
-st.markdown("<hr style='margin:2px 0px; border-top: 1px solid #ddd;'>", unsafe_allow_html=True)
+with c1:
+    if st.button("👷\nOBRAS", use_container_width=True): 
+        st.session_state.pagina = 'OBRA'
+        st.rerun()
+with c2:
+    if st.button("💸\nGASTO", use_container_width=True): 
+        st.session_state.pagina = 'GASTO'
+        st.rerun()
+with c3:
+    if st.button("📋\nLISTA", use_container_width=True): 
+        st.session_state.pagina = 'LISTA'
+        st.rerun()
 
-# --- RESTANTE DAS FUNÇÕES (IGUAL ANTERIOR) ---
+# --- TELAS ---
+pag = st.session_state.pagina
+
+# Botão Voltar (Apenas nas páginas internas)
+if pag != 'RESUMO':
+    st.markdown("---")
+    if st.button("⬅️ VOLTAR PARA RESUMO"):
+        st.session_state.pagina = 'RESUMO'
+        st.rerun()
+
+# --- CONTEÚDO ---
 def listar_obras():
     res = supabase.table("obras").select("id, nome_obra").execute()
     return {item['nome_obra']: item['id'] for item in res.data}
@@ -94,13 +105,6 @@ def listar_obras():
 def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").order("nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
-
-pag = st.session_state.pagina
-
-if pag != 'RESUMO':
-    if st.button("⬅️ VOLTAR PARA RESUMO"):
-        st.session_state.pagina = 'RESUMO'
-        st.rerun()
 
 if pag == 'RESUMO':
     obras = listar_obras()
