@@ -38,17 +38,12 @@ def realizar_login(email, senha):
     except: pass
     return False
 
-# --- 3. ESTILO VISUAL (BRANDING + MENU + LARGURA 70%) ---
+# --- 3. ESTILO VISUAL ---
 st.markdown(f"""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {{display: none;}}
     .block-container {{ padding-top: 1rem !important; }}
-    
-    /* Cantos retos para a logo */
-    img {{
-        border-radius: 0px !important;
-    }}
-    
+    img {{ border-radius: 0px !important; }}
     .data-card {{ 
         background: #ffffff; padding: 20px; border-radius: 15px; 
         border: 1px solid #eee; margin-bottom: 15px; color: #1e1e1e; 
@@ -56,40 +51,15 @@ st.markdown(f"""
     }}
     .data-card h2 {{ color: #1E1E1E !important; margin: 0; font-weight: 800; }}
     .data-card small {{ color: #666 !important; font-weight: 700; text-transform: uppercase; }}
-    
-    /* Estilo do botão do menu */
     div.stButton > button[key="trigger"] {{
-        background-color: transparent !important; 
-        color: #1E1E1E !important;
-        width: 45px !important; height: 45px !important;
-        border: none !important;
-        font-size: 35px !important;
-        padding: 0 !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
+        background-color: transparent !important; color: #1E1E1E !important;
+        width: 45px !important; height: 45px !important; border: none !important;
+        font-size: 35px !important; padding: 0 !important; display: flex !important;
+        align-items: center !important; justify-content: center !important;
     }}
-    
-    /* Container do Menu (70% de largura) */
-    .nav-card {{
-        width: 70% !important;
-        margin: 0 auto !important;
-        text-align: center;
-    }}
-    
-    .nav-card button {{ 
-        width: 100% !important; height: 60px !important; 
-        border-radius: 8px !important; font-weight: 700 !important; 
-        margin-bottom: 8px !important;
-    }}
-
-    /* Centralizar imagem no Login */
-    .stImage > img {{
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
-        border-radius: 0px !important;
-    }}
+    .nav-card {{ width: 70% !important; margin: 0 auto !important; text-align: center; }}
+    .nav-card button {{ width: 100% !important; height: 60px !important; border-radius: 8px !important; font-weight: 700 !important; margin-bottom: 8px !important; }}
+    .stImage > img {{ display: block; margin-left: auto; margin-right: auto; border-radius: 0px !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -98,7 +68,6 @@ if not st.session_state.logado:
     st.markdown("<br><br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
-        # Marca centralizada sem texto abaixo
         st.image(LOGO_URL, width=220)
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
@@ -109,8 +78,7 @@ if not st.session_state.logado:
                 else: st.error("Acesso negado.")
     st.stop()
 
-# --- 5. CABEÇALHO (LOGO E MENU JUNTOS) ---
-# Reduzi o espaço entre as colunas para a logo ficar próxima ao menu
+# --- 5. CABEÇALHO ---
 head_col1, head_col2 = st.columns([0.15, 0.85])
 with head_col1:
     icon = "×" if st.session_state.menu_aberto else "☰"
@@ -119,7 +87,6 @@ with head_col1:
         st.rerun()
 with head_col2:
     st.image(LOGO_URL, width=195)
-
 st.markdown("---") 
 
 # --- 6. FUNÇÕES DE APOIO ---
@@ -133,6 +100,10 @@ def listar_obras():
 def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
+
+def listar_fornecedores():
+    res = supabase.table("fornecedores").select("id, nome_fornecedor").order("nome_fornecedor").execute()
+    return {item['nome_fornecedor']: item['id'] for item in res.data}
 
 def gerar_pdf(df, nome_obra):
     pdf = FPDF()
@@ -153,32 +124,23 @@ def gerar_pdf(df, nome_obra):
     pdf.cell(190, 10, f"TOTAL: {formatar_real(total)}", ln=True, align="R")
     return pdf.output(dest='S').encode('latin-1', 'replace')
 
-# --- 7. LÓGICA DO MENU (70% LARGURA CENTRALIZADO) ---
+# --- 7. LÓGICA DO MENU ---
 if st.session_state.menu_aberto:
     st.markdown('<div class="nav-card">', unsafe_allow_html=True)
     perfil = st.session_state.user_perfil
-    
-    if st.button("📊 Dashboard"): 
-        st.session_state.pagina='RESUMO'; st.session_state.menu_aberto=False; st.rerun()
-    if st.button("💸 Lançar Gasto"): 
-        st.session_state.pagina='GASTO'; st.session_state.menu_aberto=False; st.rerun()
-    if st.button("📋 Relatórios"): 
-        st.session_state.pagina='LISTA'; st.session_state.menu_aberto=False; st.rerun()
-    
+    if st.button("📊 Dashboard"): st.session_state.pagina='RESUMO'; st.session_state.menu_aberto=False; st.rerun()
+    if st.button("💸 Lançar Gasto"): st.session_state.pagina='GASTO'; st.session_state.menu_aberto=False; st.rerun()
+    if st.button("📋 Relatórios"): st.session_state.pagina='LISTA'; st.session_state.menu_aberto=False; st.rerun()
     if perfil == 'ADMIN':
-        if st.button("🏗️ Minhas Obras"): 
-            st.session_state.pagina='OBRA'; st.session_state.menu_aberto=False; st.rerun()
-        if st.button("👥 Gestão de Equipe"): 
-            st.session_state.pagina='USUARIOS'; st.session_state.menu_aberto=False; st.rerun()
-            
-    if st.button("Sair (Logout)", type="secondary"):
-        st.session_state.logado = False; st.session_state.menu_aberto=False; st.rerun()
+        if st.button("🏗️ Minhas Obras"): st.session_state.pagina='OBRA'; st.session_state.menu_aberto=False; st.rerun()
+        if st.button("🤝 Fornecedores"): st.session_state.pagina='FORN'; st.session_state.menu_aberto=False; st.rerun()
+        if st.button("👥 Gestão de Equipe"): st.session_state.pagina='USUARIOS'; st.session_state.menu_aberto=False; st.rerun()
+    if st.button("Sair (Logout)", type="secondary"): st.session_state.logado = False; st.session_state.menu_aberto=False; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 8. TELAS ---
 else:
-    pag = st.session_state.pagina
-    perfil = st.session_state.user_perfil
+    pag, perfil = st.session_state.pagina, st.session_state.user_perfil
 
     if pag == 'RESUMO':
         obras = listar_obras()
@@ -186,87 +148,72 @@ else:
             sel = st.selectbox("Selecione a Obra", list(obras.keys()), label_visibility="collapsed")
             res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': obras[sel]}).execute()
             gasto = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
-            
             if perfil == 'ADMIN':
                 info = supabase.table("obras").select("*").eq("id", obras[sel]).single().execute().data
-                st.markdown(f'''
-                    <div class="data-card">
-                        <small>INVESTIMENTO TOTAL</small>
-                        <h2>{formatar_real(gasto)}</h2>
-                        <hr style="border:0.5px solid #eee;">
-                        <small>SALDO EM CAIXA: <b>{formatar_real(float(info["orcamento_previsto"]) - gasto)}</b></small>
-                    </div>
-                ''', unsafe_allow_html=True)
+                st.markdown(f'<div class="data-card"><small>INVESTIMENTO TOTAL</small><h2>{formatar_real(gasto)}</h2><hr style="border:0.5px solid #eee;"><small>SALDO: <b>{formatar_real(float(info["orcamento_previsto"]) - gasto)}</b></small></div>', unsafe_allow_html=True)
             else:
-                st.markdown(f'''
-                    <div class="data-card">
-                        <small>GASTO ACUMULADO</small>
-                        <h2>{formatar_real(gasto)}</h2>
-                    </div>
-                ''', unsafe_allow_html=True)
-            
-            if res_s.data:
-                df_chart = pd.DataFrame(res_s.data).set_index('nome_categoria')
-                st.bar_chart(df_chart)
+                st.markdown(f'<div class="data-card"><small>GASTO ACUMULADO</small><h2>{formatar_real(gasto)}</h2></div>', unsafe_allow_html=True)
+            if res_s.data: st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
 
     elif pag == 'GASTO':
-        st.markdown("### 💸 Lançamento de Despesa")
-        obras, cats = listar_obras(), listar_categorias()
+        st.markdown("### 💸 Lançamento")
+        obras, cats, forns = listar_obras(), listar_categorias(), listar_fornecedores()
         with st.container(border=True):
             o = st.selectbox("Obra", list(obras.keys()))
             c = st.selectbox("Categoria", list(cats.keys()))
+            f_sel = st.selectbox("Fornecedor", list(forns.keys()))
             d = st.text_input("Descrição")
             v = st.number_input("Valor Pago", min_value=0.0)
             foto = st.camera_input("Foto do Recibo")
-            if st.button("SALVAR LANÇAMENTO", use_container_width=True, type="primary"):
+            if st.button("SALVAR GASTO", use_container_width=True, type="primary"):
                 url = None
                 if foto:
                     n_arq = f"{uuid.uuid4()}.jpg"
                     supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
                     url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
-                supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "descricao": d, "valor": v, "url_comprovante": url}).execute()
-                st.success("Lançamento efetuado!"); st.session_state.pagina = 'LISTA'; st.rerun()
+                supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "fornecedor_id": forns[f_sel], "descricao": d, "valor": v, "url_comprovante": url}).execute()
+                st.success("Salvo!"); st.session_state.pagina = 'LISTA'; st.rerun()
+
+    elif pag == 'FORN' and perfil == 'ADMIN':
+        st.markdown("### 🤝 Gestão de Fornecedores")
+        with st.container(border=True):
+            novo_f = st.text_input("Nome do Fornecedor")
+            if st.button("CADASTRAR FORNECEDOR", use_container_width=True):
+                supabase.table("fornecedores").insert({"nome_fornecedor": novo_f}).execute()
+                st.success("Cadastrado!"); st.rerun()
+        st.markdown("---")
+        lista_f = supabase.table("fornecedores").select("nome_fornecedor").order("nome_fornecedor").execute().data
+        st.table(pd.DataFrame(lista_f))
 
     elif pag == 'LISTA':
         st.markdown("### 📋 Histórico")
         obras = listar_obras()
         if obras:
-            o_f = st.selectbox("Filtrar por Obra:", list(obras.keys()))
+            o_f = st.selectbox("Obra:", list(obras.keys()))
             c1, c2 = st.columns(2)
-            d_i = c1.date_input("Início:", datetime.now().replace(day=1))
-            d_f = c2.date_input("Fim:", datetime.now())
-            
+            d_i, d_f = c1.date_input("Início:", datetime.now().replace(day=1)), c2.date_input("Fim:", datetime.now())
             dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obras[o_f]).gte("created_at", d_i).lte("created_at", f"{d_f} 23:59:59").order("created_at", desc=True).execute().data
-            
             if dados:
                 if perfil == 'ADMIN':
                     pdf_b = gerar_pdf(pd.DataFrame(dados), o_f)
-                    st.download_button("📥 Baixar Relatório PDF", pdf_b, f"Relatorio_{o_f}.pdf", "application/pdf", use_container_width=True)
-                
+                    st.download_button("📥 Gerar PDF", pdf_b, f"Relatorio_{o_f}.pdf", "application/pdf", use_container_width=True)
                 for g in dados:
                     with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
                         if g.get('url_comprovante'): st.image(g['url_comprovante'])
-                        if st.button("🗑️ Excluir Registro", key=f"del_{g['id']}", use_container_width=True):
-                            if g.get('url_comprovante'):
-                                try: supabase.storage.from_("comprovantes").remove([g['url_comprovante'].split('/')[-1]])
-                                except: pass
-                            supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute()
-                            st.rerun()
+                        if st.button("🗑️ Excluir", key=f"del_{g['id']}", use_container_width=True):
+                            supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
 
     elif pag == 'OBRA' and perfil == 'ADMIN':
-        st.markdown("### 🏗️ Cadastrar Obras")
+        st.markdown("### 🏗️ Gestão de Obras")
         with st.container(border=True):
-            n = st.text_input("Nome da Obra"); v = st.number_input("Orçamento Previsto", min_value=0.0)
-            if st.button("CADASTRAR OBRA", use_container_width=True):
-                supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
-                st.success("Obra cadastrada!"); st.session_state.pagina = 'RESUMO'; st.rerun()
+            n, v = st.text_input("Nome"), st.number_input("Orçamento", min_value=0.0)
+            if st.button("CADASTRAR", use_container_width=True):
+                supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute(); st.rerun()
 
     elif pag == 'USUARIOS' and perfil == 'ADMIN':
-        st.markdown("### 👥 Gestão de Equipe")
+        st.markdown("### 👥 Equipe")
         with st.container(border=True):
-            nv_email = st.text_input("E-mail"); nv_senha = st.text_input("Senha")
-            nv_perfil = st.selectbox("Perfil", ["LANCADOR", "ADMIN"])
-            if st.button("CRIAR CONTA", use_container_width=True, type="primary"):
-                supabase.table("usuarios").insert({"email": nv_email, "senha": nv_senha, "perfil": nv_perfil}).execute()
-                st.success("Usuário criado!"); st.rerun()
+            ne, ns, np = st.text_input("E-mail"), st.text_input("Senha"), st.selectbox("Perfil", ["LANCADOR", "ADMIN"])
+            if st.button("CRIAR", use_container_width=True):
+                supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute(); st.rerun()
         st.table(pd.DataFrame(supabase.table("usuarios").select("email, perfil").execute().data))
