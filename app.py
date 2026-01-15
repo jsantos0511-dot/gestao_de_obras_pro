@@ -26,6 +26,8 @@ if 'logado' not in st.session_state: st.session_state.logado = False
 if 'user_perfil' not in st.session_state: st.session_state.user_perfil = None
 if 'pagina' not in st.session_state: st.session_state.pagina = 'RESUMO'
 if 'menu_aberto' not in st.session_state: st.session_state.menu_aberto = False
+# Estados para edição de fornecedor
+if 'forn_edit_id' not in st.session_state: st.session_state.forn_edit_id = None
 
 def realizar_login(email, senha):
     try:
@@ -59,7 +61,6 @@ st.markdown(f"""
     }}
     .nav-card {{ width: 70% !important; margin: 0 auto !important; text-align: center; }}
     .nav-card button {{ width: 100% !important; height: 60px !important; border-radius: 8px !important; font-weight: 700 !important; margin-bottom: 8px !important; }}
-    .stImage > img {{ display: block; margin-left: auto; margin-right: auto; border-radius: 0px !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -112,9 +113,9 @@ if st.session_state.menu_aberto:
     if st.button("📊 Dashboard"): st.session_state.pagina='RESUMO'; st.session_state.menu_aberto=False; st.rerun()
     if st.button("💸 Lançar Gasto"): st.session_state.pagina='GASTO'; st.session_state.menu_aberto=False; st.rerun()
     if st.button("📋 Relatórios"): st.session_state.pagina='LISTA'; st.session_state.menu_aberto=False; st.rerun()
+    if st.button("🤝 Fornecedores"): st.session_state.pagina='FORN'; st.session_state.menu_aberto=False; st.rerun()
     if perfil == 'ADMIN':
         if st.button("🏗️ Minhas Obras"): st.session_state.pagina='OBRA'; st.session_state.menu_aberto=False; st.rerun()
-        if st.button("🤝 Fornecedores"): st.session_state.pagina='FORN'; st.session_state.menu_aberto=False; st.rerun()
         if st.button("👥 Gestão de Equipe"): st.session_state.pagina='USUARIOS'; st.session_state.menu_aberto=False; st.rerun()
     if st.button("Sair (Logout)", type="secondary"): st.session_state.logado = False; st.session_state.menu_aberto=False; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
@@ -155,57 +156,70 @@ else:
                 supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "fornecedor_id": forns[f_sel], "descricao": d, "valor": v, "url_comprovante": url}).execute()
                 st.success("Salvo!"); st.session_state.pagina = 'LISTA'; st.rerun()
 
-    elif pag == 'FORN' and perfil == 'ADMIN':
+    elif pag == 'FORN':
         st.markdown("### 🤝 Gestão de Fornecedores")
+        
+        # Lógica para carregar dados se estiver em modo edição
+        dados_edit = {"nome_fornecedor": "", "representante": "", "telefone": "", "whatsapp": "", "cnpj": "", "email": "", "endereco": ""}
+        if st.session_state.forn_edit_id:
+            res_edit = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
+            if res_edit.data: dados_edit = res_edit.data
+
         with st.container(border=True):
-            fn = st.text_input("Nome da Empresa*")
-            fr = st.text_input("Nome do Representante*")
-            ft = st.text_input("Telefone Principal*")
-            # Campo WhatsApp com placeholder da formatação Brasil
-            fw = st.text_input("WhatsApp", placeholder="(99) 99999-9999")
-            fc = st.text_input("CNPJ")
-            fe = st.text_input("E-mail")
-            fa = st.text_area("Endereço Completo")
+            st.markdown("#### " + ("Editar Fornecedor" if st.session_state.forn_edit_id else "Novo Cadastro"))
+            fn = st.text_input("Nome da Empresa*", value=dados_edit["nome_fornecedor"])
+            fr = st.text_input("Nome do Representante*", value=dados_edit["representante"])
+            ft = st.text_input("Telefone Principal*", value=dados_edit["telefone"])
+            fw = st.text_input("WhatsApp", value=dados_edit["whatsapp"], placeholder="(99) 99999-9999")
+            fc = st.text_input("CNPJ", value=dados_edit["cnpj"])
+            fe = st.text_input("E-mail", value=dados_edit["email"])
+            fa = st.text_area("Endereço Completo", value=dados_edit["endereco"])
             
-            if st.button("CADASTRAR FORNECEDOR", use_container_width=True, type="primary"):
-                if not fn or not fr or not ft:
-                    st.error("Por favor, preencha os campos obrigatórios (*)")
-                else:
-                    supabase.table("fornecedores").insert({
-                        "nome_fornecedor": fn, 
-                        "representante": fr, 
-                        "telefone": ft, 
-                        "whatsapp": fw,
-                        "cnpj": fc,
-                        "email": fe,
-                        "endereco": fa
-                    }).execute()
-                    st.success("Fornecedor cadastrado!"); st.rerun()
+            c1, c2 = st.columns(2)
+            if st.session_state.forn_edit_id:
+                if c1.button("ATUALIZAR", use_container_width=True, type="primary"):
+                    supabase.table("fornecedores").update({"nome_fornecedor": fn, "representante": fr, "telefone": ft, "whatsapp": fw, "cnpj": fc, "email": fe, "endereco": fa}).eq("id", st.session_state.forn_edit_id).execute()
+                    st.session_state.forn_edit_id = None
+                    st.success("Atualizado!"); st.rerun()
+                if c2.button("CANCELAR", use_container_width=True):
+                    st.session_state.forn_edit_id = None; st.rerun()
+            else:
+                if st.button("CADASTRAR FORNECEDOR", use_container_width=True, type="primary"):
+                    if not fn or not fr or not ft: st.error("Preencha os campos obrigatórios (*)")
+                    else:
+                        supabase.table("fornecedores").insert({"nome_fornecedor": fn, "representante": fr, "telefone": ft, "whatsapp": fw, "cnpj": fc, "email": fe, "endereco": fa}).execute()
+                        st.success("Cadastrado!"); st.rerun()
         
         st.markdown("---")
-        st.markdown("#### Lista de Contatos")
-        lista_f = supabase.table("fornecedores").select("nome_fornecedor, representante, telefone, whatsapp, email").order("nome_fornecedor").execute().data
+        lista_f = supabase.table("fornecedores").select("*").order("nome_fornecedor").execute().data
         if lista_f:
-            st.table(pd.DataFrame(lista_f).rename(columns={
-                "nome_fornecedor": "Empresa", "representante": "Contato", 
-                "telefone": "Telef.", "whatsapp": "WhatsApp", "email": "E-mail"
-            }))
+            for f in lista_f:
+                with st.expander(f"🏢 {f['nome_fornecedor']} ({f['representante']})"):
+                    st.write(f"**Tel:** {f['telefone']} | **Zap:** {f['whatsapp']}")
+                    st.write(f"**E-mail:** {f['email']}")
+                    st.write(f"**CNPJ:** {f['cnpj']}")
+                    st.write(f"**Endereço:** {f['endereco']}")
+                    col_edit, col_del = st.columns(2)
+                    if col_edit.button("📝 Editar", key=f"edit_{f['id']}", use_container_width=True):
+                        st.session_state.forn_edit_id = f['id']; st.rerun()
+                    if col_del.button("🗑️ Excluir", key=f"del_forn_{f['id']}", use_container_width=True):
+                        try:
+                            supabase.table("fornecedores").delete().eq("id", f['id']).execute()
+                            st.success("Excluído!"); st.rerun()
+                        except:
+                            st.error("Não é possível excluir: este fornecedor possui gastos vinculados.")
 
     elif pag == 'LISTA':
         st.markdown("### 📋 Histórico")
         obras = listar_obras()
         if obras:
             o_f = st.selectbox("Obra:", list(obras.keys()))
-            # Filtro de data mantido
-            c1, c2 = st.columns(2)
-            d_i, d_f = c1.date_input("Início:", datetime.now().replace(day=1)), c2.date_input("Fim:", datetime.now())
-            dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obras[o_f]).gte("created_at", d_i).lte("created_at", f"{d_f} 23:59:59").order("created_at", desc=True).execute().data
+            dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obras[o_f]).order("created_at", desc=True).execute().data
             if dados:
-                # Função de PDF mantida conforme código original
                 for g in dados:
                     with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
                         if g.get('url_comprovante'): st.image(g['url_comprovante'])
-                        if st.button("🗑️ Excluir", key=f"del_{g['id']}", use_container_width=True):
+                        if st.button("🗑️ Excluir Gasto", key=f"del_g_{g['id']}", use_container_width=True):
                             supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
 
     elif pag == 'OBRA' and perfil == 'ADMIN':
@@ -216,7 +230,7 @@ else:
                 supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute(); st.rerun()
 
     elif pag == 'USUARIOS' and perfil == 'ADMIN':
-        st.markdown("### 👥 Equipe")
+        st.markdown("### 👥 Gestão de Equipe")
         with st.container(border=True):
             ne, ns, np = st.text_input("E-mail"), st.text_input("Senha"), st.selectbox("Perfil", ["LANCADOR", "ADMIN"])
             if st.button("CRIAR", use_container_width=True):
