@@ -37,18 +37,16 @@ def realizar_login(email, senha):
     except: pass
     return False
 
-# --- 3. ESTILO VISUAL (BRANDING + MENU + CANTOS RETOS) ---
+# --- 3. ESTILO VISUAL (BRANDING + MENU + LARGURA 70%) ---
 st.markdown(f"""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {{display: none;}}
     .block-container {{ padding-top: 1rem !important; }}
     
-    /* Garantir cantos retos em todas as imagens (Logo) */
     img {{
         border-radius: 0px !important;
     }}
     
-    /* Card de Dados */
     .data-card {{ 
         background: #ffffff; padding: 20px; border-radius: 15px; 
         border: 1px solid #eee; margin-bottom: 15px; color: #1e1e1e; 
@@ -57,20 +55,25 @@ st.markdown(f"""
     .data-card h2 {{ color: #1E1E1E !important; margin: 0; font-weight: 800; }}
     .data-card small {{ color: #666 !important; font-weight: 700; text-transform: uppercase; }}
     
-    /* Botão Menu Alinhado */
     div.stButton > button[key="trigger"] {{
         background-color: transparent !important; 
         color: #1E1E1E !important;
-        width: 45px !important; height: 45px !important;
+        width: 50px !important; height: 50px !important;
         border: none !important;
-        font-size: 32px !important;
+        font-size: 35px !important;
         padding: 0 !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        margin-top: 5px !important;
     }}
     
-    /* Menu de Navegação - Nomes Completos */
+    /* Menu de Navegação - Largura 70% e Centralizado */
+    .nav-card {{
+        width: 70% !important;
+        margin: 0 auto !important;
+    }}
+    
     .nav-card button {{ 
         width: 100% !important; height: 70px !important; 
         border-radius: 12px !important; font-weight: 700 !important; 
@@ -84,8 +87,7 @@ if not st.session_state.logado:
     st.markdown("<br><br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 1.5, 1])
     with c2:
-        # Logo reduzida no login com cantos retos
-        st.image(LOGO_URL, width=200)
+        st.image(LOGO_URL, width=220)
         st.markdown("<h4 style='text-align:center;'>Acesso ao Sistema</h4>", unsafe_allow_html=True)
         with st.container(border=True):
             u_email = st.text_input("E-mail")
@@ -95,19 +97,19 @@ if not st.session_state.logado:
                 else: st.error("E-mail ou senha inválidos.")
     st.stop()
 
-# --- 5. CABEÇALHO ALINHADO (MENU + LOGO NA MESMA LINHA) ---
-# Criando um container para alinhar verticalmente o botão e a imagem
-head_col1, head_col2 = st.columns([0.15, 0.85])
+# --- 5. CABEÇALHO ALINHADO ---
+# Colunas ajustadas para permitir a logo maior na mesma linha
+head_col1, head_col2 = st.columns([0.2, 0.8])
 with head_col1:
     icon = "×" if st.session_state.get('menu_aberto', False) else "☰"
     if st.button(icon, key="trigger"):
         st.session_state.menu_aberto = not st.session_state.get('menu_aberto', False)
         st.rerun()
 with head_col2:
-    # Logo alinhada e com tamanho ajustado
-    st.image(LOGO_URL, width=160)
+    # Logo aumentada em 20% (de 160 para 195)
+    st.image(LOGO_URL, width=195)
 
-st.markdown("---") # Linha sutil de separação
+st.markdown("---") 
 
 # --- 6. FUNÇÕES DE APOIO ---
 def formatar_real(valor):
@@ -140,25 +142,20 @@ def gerar_pdf(df, nome_obra):
     pdf.cell(190, 10, f"TOTAL: {formatar_real(total)}", ln=True, align="R")
     return pdf.output(dest='S').encode('latin-1', 'replace')
 
-# --- 7. LOGICA DO MENU (NOMES COMPLETOS) ---
+# --- 7. LOGICA DO MENU (70% LARGURA) ---
 if st.session_state.get('menu_aberto', False):
     st.markdown('<div class="nav-card">', unsafe_allow_html=True)
     perfil = st.session_state.user_perfil
     
-    col_a, col_b = st.columns(2)
-    with col_a:
-        if st.button("📊\nDashboard"): st.session_state.pagina='RESUMO'; st.session_state.menu_aberto=False; st.rerun()
-        if st.button("💸\nLançar Gasto"): st.session_state.pagina='GASTO'; st.session_state.menu_aberto=False; st.rerun()
-    with col_b:
-        if st.button("📋\nRelatórios"): st.session_state.pagina='LISTA'; st.session_state.menu_aberto=False; st.rerun()
-        if perfil == 'ADMIN':
-            if st.button("🏗️\nMinhas Obras"): st.session_state.pagina='OBRA'; st.session_state.menu_aberto=False; st.rerun()
+    if st.button("📊 Dashboard"): st.session_state.pagina='RESUMO'; st.session_state.menu_aberto=False; st.rerun()
+    if st.button("💸 Lançar Gasto"): st.session_state.pagina='GASTO'; st.session_state.menu_aberto=False; st.rerun()
+    if st.button("📋 Relatórios"): st.session_state.pagina='LISTA'; st.session_state.menu_aberto=False; st.rerun()
     
     if perfil == 'ADMIN':
-        if st.button("👥 Gestão de Equipe", use_container_width=True):
-            st.session_state.pagina='USUARIOS'; st.session_state.menu_aberto=False; st.rerun()
+        if st.button("🏗️ Minhas Obras"): st.session_state.pagina='OBRA'; st.session_state.menu_aberto=False; st.rerun()
+        if st.button("👥 Gestão de Equipe"): st.session_state.pagina='USUARIOS'; st.session_state.menu_aberto=False; st.rerun()
             
-    if st.button("Sair (Logout)", use_container_width=True, type="secondary"):
+    if st.button("Sair (Logout)", type="secondary"):
         st.session_state.logado = False; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -189,7 +186,7 @@ else:
         obras, cats = listar_obras(), listar_categorias()
         with st.container(border=True):
             o = st.selectbox("Selecione a Obra", list(obras.keys())); c = st.selectbox("Categoria", list(cats.keys()))
-            d = st.text_input("Descrição (Ex: Compra de cimento)"); v = st.number_input("Valor Pago", min_value=0.0)
+            d = st.text_input("Descrição"); v = st.number_input("Valor Pago", min_value=0.0)
             foto = st.camera_input("Foto do Recibo")
             if st.button("SALVAR LANÇAMENTO", use_container_width=True, type="primary"):
                 url = None
@@ -229,8 +226,7 @@ else:
     elif pag == 'OBRA' and perfil == 'ADMIN':
         st.markdown("### 🏗️ Cadastrar Obras")
         with st.container(border=True):
-            n = st.text_input("Nome da Obra")
-            v = st.number_input("Orçamento Previsto", min_value=0.0)
+            n = st.text_input("Nome da Obra"); v = st.number_input("Orçamento Previsto", min_value=0.0)
             if st.button("CADASTRAR OBRA", use_container_width=True):
                 supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
                 st.success("Obra cadastrada!"); st.session_state.pagina = 'RESUMO'; st.rerun()
@@ -238,8 +234,8 @@ else:
     elif pag == 'USUARIOS' and perfil == 'ADMIN':
         st.markdown("### 👥 Gestão de Equipe")
         with st.container(border=True):
-            nv_email = st.text_input("E-mail de acesso"); nv_senha = st.text_input("Senha temporária")
-            nv_perfil = st.selectbox("Perfil do Usuário", ["LANCADOR", "ADMIN"])
+            nv_email = st.text_input("E-mail"); nv_senha = st.text_input("Senha")
+            nv_perfil = st.selectbox("Perfil", ["LANCADOR", "ADMIN"])
             if st.button("CRIAR NOVA CONTA", use_container_width=True, type="primary"):
                 supabase.table("usuarios").insert({"email": nv_email, "senha": nv_senha, "perfil": nv_perfil}).execute()
                 st.success("Usuário criado!"); st.rerun()
