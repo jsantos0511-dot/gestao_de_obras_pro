@@ -5,13 +5,6 @@ import os
 import uuid
 from datetime import datetime
 
-# --- TENTATIVA DE IMPORTAR PDF (PROTEÇÃO) ---
-try:
-    from fpdf import FPDF
-    PDF_DISPONIVEL = True
-except ImportError:
-    PDF_DISPONIVEL = False
-
 # --- 1. CONEXÃO ---
 SUPABASE_URL = "https://ryzcivhjohgtzixqflwo.supabase.co"
 SUPABASE_KEY = "sb_publishable_Mbx3FHs_VoprLY2e9d1QMQ_5309Bglr"
@@ -36,35 +29,7 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-def gerar_pdf(df, nome_obra):
-    if not PDF_DISPONIVEL: return None
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(200, 10, f"Relatorio ROSECON - {nome_obra}", ln=True, align="C")
-    pdf.set_font("Arial", "B", 10)
-    pdf.ln(10)
-    pdf.cell(30, 10, "Data", 1)
-    pdf.cell(80, 10, "Descricao", 1)
-    pdf.cell(40, 10, "Categoria", 1)
-    pdf.cell(40, 10, "Valor", 1)
-    pdf.ln()
-    pdf.set_font("Arial", "", 10)
-    total = 0
-    for _, row in df.iterrows():
-        data_f = datetime.strptime(row['created_at'][:10], '%Y-%m-%d').strftime('%d/%m/%Y')
-        pdf.cell(30, 10, data_f, 1)
-        pdf.cell(80, 10, str(row['descricao'])[:40], 1)
-        pdf.cell(40, 10, row['categorias_obra']['nome_categoria'], 1)
-        pdf.cell(40, 10, f"R$ {row['valor']:,.2f}", 1)
-        pdf.ln()
-        total += row['valor']
-    pdf.ln(5)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(190, 10, f"TOTAL: {formatar_real(total)}", ln=True, align="R")
-    return pdf.output(dest='S').encode('latin-1')
-
-# --- 3. CSS DESIGN (BARRINHAS GIGANTES) ---
+# --- 3. ESTILO VISUAL (MANTIDO) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
@@ -79,7 +44,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. NAVEGAÇÃO ---
 if 'menu_aberto' not in st.session_state: st.session_state.menu_aberto = False
 if 'pagina' not in st.session_state: st.session_state.pagina = 'RESUMO'
 
@@ -99,7 +63,7 @@ if st.session_state.menu_aberto:
         if st.button("📋\nRelatórios"): st.session_state.pagina='LISTA'; st.session_state.menu_aberto=False; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # --- 5. TELAS ---
+    # --- TELAS DO SISTEMA ---
     pag = st.session_state.pagina
 
     if pag == 'RESUMO':
@@ -116,12 +80,51 @@ else:
         st.markdown("### 💸 Novo Lançamento")
         obras, cats = listar_obras(), listar_categorias()
         with st.container(border=True):
-            o = st.selectbox("Obra", list(obras.keys())); c = st.selectbox("Categoria", list(cats.keys()))
-            d = st.text_input("Descrição"); v = st.number_input("Valor", min_value=0.0)
+            o = st.selectbox("Obra", list(obras.keys()))
+            c = st.selectbox("Categoria", list(cats.keys()))
+            d = st.text_input("Descrição")
+            v = st.number_input("Valor", min_value=0.0)
             foto = st.camera_input("Capturar Recibo")
             if st.button("SALVAR", use_container_width=True, type="primary"):
                 url = None
                 if foto:
                     n_arq = f"{uuid.uuid4()}.jpg"
                     supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
-                    url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq
+                    url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
+                supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "descricao": d, "valor": v, "url_comprovante": url}).execute()
+                st.success("Salvo!"); st.session_state.pagina = 'RESUMO'; st.rerun()
+
+    elif pag == 'LISTA':
+        st.markdown("### 📋 Histórico & Filtros")
+        obras = listar_obras()
+        if obras:
+            o_f = st.selectbox("Filtrar Obra:", list(obras.keys()))
+            
+            # Filtro de Data Simples (Sem travar o código)
+            col1, col2 = st.columns(2)
+            d_ini = col1.date_input("Início:", datetime.now().replace(day=1))
+            d_fim = col2.date_input("Fim:", datetime.now())
+            
+            dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obras[o_f]).gte("created_at", d_ini).lte("created_at", f"{d_fim} 23:59:59").order("created_at", desc=True).execute().data
+            
+            if dados:
+                st.info(f"Mostrando {len(dados)} lançamentos.")
+                for g in dados:
+                    with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
+                        if g.get('url_comprovante'): st.image(g['url_comprovante'])
+                        
+                        # Botão Excluir
+                        if st.button("🗑️ Excluir Gasto", key=f"del_{g['id']}", use_container_width=True):
+                            supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute()
+                            st.toast("Lançamento removido!")
+                            st.rerun()
+            else:
+                st.warning("Nenhum dado encontrado para este período.")
+
+    elif pag == 'OBRA':
+        st.markdown("### 🏗️ Nova Obra")
+        with st.container(border=True):
+            n = st.text_input("Nome"); v = st.number_input("Orçamento", min_value=0.0)
+            if st.button("Criar", use_container_width=True):
+                supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
+                st.success("Obra criada!"); st.session_state.pagina = 'RESUMO'; st.rerun()
