@@ -3,6 +3,8 @@ import pandas as pd
 from supabase import create_client, Client
 import os
 import uuid
+from fpdf import FPDF
+from datetime import datetime
 
 # --- 1. CONEXÃO ---
 SUPABASE_URL = "https://ryzcivhjohgtzixqflwo.supabase.co"
@@ -16,7 +18,7 @@ supabase = get_supabase()
 
 st.set_page_config(page_title="ROSECON Pro", layout="centered")
 
-# --- 2. FUNÇÕES CONSOLIDADAS ---
+# --- 2. FUNÇÕES DE APOIO ---
 def formatar_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
 
@@ -28,7 +30,38 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- 3. CSS DESIGN (MANTIDO) ---
+def exportar_pdf(df, nome_obra):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(200, 10, f"Relatorio de Gastos - {nome_obra}", ln=True, align="C")
+    pdf.set_font("Arial", "B", 10)
+    pdf.ln(10)
+    
+    # Cabeçalho da Tabela
+    pdf.cell(30, 10, "Data", 1)
+    pdf.cell(80, 10, "Descricao", 1)
+    pdf.cell(40, 10, "Categoria", 1)
+    pdf.cell(40, 10, "Valor", 1)
+    pdf.ln()
+    
+    pdf.set_font("Arial", "", 10)
+    total = 0
+    for _, row in df.iterrows():
+        data_f = datetime.strptime(row['created_at'][:10], '%Y-%m-%d').strftime('%d/%m/%Y')
+        pdf.cell(30, 10, data_f, 1)
+        pdf.cell(80, 10, str(row['descricao'])[:40], 1)
+        pdf.cell(40, 10, row['categorias_obra']['nome_categoria'], 1)
+        pdf.cell(40, 10, formatar_real(row['valor']), 1)
+        pdf.ln()
+        total += row['valor']
+    
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(200, 10, f"TOTAL ACUMULADO: {formatar_real(total)}", ln=True, align="R")
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- 3. CSS (DESIGN PRESERVADO) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
@@ -68,11 +101,11 @@ else:
     if pag == 'RESUMO':
         obras = listar_obras()
         if obras:
-            sel = st.selectbox("Obra", list(obras.keys()), label_visibility="collapsed")
+            sel = st.selectbox("Obra Ativa", list(obras.keys()), label_visibility="collapsed")
             info = supabase.table("obras").select("*").eq("id", obras[sel]).single().execute().data
             res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': obras[sel]}).execute()
             gasto = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
-            st.markdown(f'<div class="data-card"><small>GASTO UTILIZADO</small><h2>{formatar_real(gasto)}</h2><hr><small>SALDO: {formatar_real(float(info["orcamento_previsto"]) - gasto)}</small></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="data-card"><small>INVESTIMENTO</small><h2>{formatar_real(gasto)}</h2><hr><small>SALDO: {formatar_real(float(info["orcamento_previsto"]) - gasto)}</small></div>', unsafe_allow_html=True)
             if res_s.data: st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
 
     elif pag == 'GASTO':
@@ -82,52 +115,69 @@ else:
             o_sel = st.selectbox("Obra", list(obras.keys()))
             c_sel = st.selectbox("Categoria", list(cats.keys()))
             desc = st.text_input("Descrição")
-            valor = st.number_input("Valor", min_value=0.0, step=0.01)
+            valor = st.number_input("Valor Pago", min_value=0.0)
             foto = st.camera_input("Capturar Recibo")
             
-            if st.button("SALVAR AGORA", use_container_width=True, type="primary"):
+            if st.button("SALVAR", use_container_width=True, type="primary"):
                 url_final = None
+                if foto:
+                    nome_img = f"{uuid.uuid4()}.jpg"
+                    supabase.storage.from_("comprovantes").upload(nome_img, foto.getvalue())
+                    url_final = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{nome_img}"
                 
-                if foto is not None:
-                    try:
-                        # 1. Gerar nome único
-                        nome_img = f"{uuid.uuid4()}.jpg"
-                        # 2. Tentar Upload
-                        conteudo = foto.getvalue()
-                        resultado = supabase.storage.from_("comprovantes").upload(
-                            path=nome_img, 
-                            file=conteudo,
-                            file_options={"content-type": "image/jpeg"}
-                        )
-                        # 3. Gerar URL Pública
-                        url_final = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{nome_img}"
-                        st.toast(f"Foto processada com sucesso!")
-                    except Exception as e:
-                        st.warning(f"A foto não pôde ser enviada: {e}")
-                        url_final = None # Garante que se der erro na foto, ele tenta salvar o resto
-                
-                # 4. Inserir no Banco
-                try:
-                    dados_lancamento = {
-                        "obra_id": obras[o_sel], 
-                        "categoria_id": cats[c_sel],
-                        "descricao": desc, 
-                        "valor": valor, 
-                        "url_comprovante": url_final
-                    }
-                    supabase.table("lancamentos_obra").insert(dados_lancamento).execute()
-                    st.success("Dados salvos no sistema!")
-                    st.session_state.pagina = 'RESUMO'; st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao salvar no banco: {e}")
+                supabase.table("lancamentos_obra").insert({
+                    "obra_id": obras[o_sel], "categoria_id": cats[c_sel],
+                    "descricao": desc, "valor": valor, "url_comprovante": url_final
+                }).execute()
+                st.success("Salvo com sucesso!"); st.session_state.pagina = 'RESUMO'; st.rerun()
 
     elif pag == 'LISTA':
-        st.markdown("### 📋 Histórico")
+        st.markdown("### 📋 Relatórios & Filtros")
         obras = listar_obras()
         if obras:
-            o_f = st.selectbox("Obra:", list(obras.keys()))
-            dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obras[o_f]).order("id", desc=True).execute().data
-            for g in dados:
-                with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
-                    if g.get('url_comprovante'): st.image(g['url_comprovante'])
-                    else: st.info("Este registro não possui foto.")
+            o_f = st.selectbox("Selecione a Obra:", list(obras.keys()))
+            
+            # --- NOVO: FILTRO POR DATA ---
+            col_d1, col_d2 = st.columns(2)
+            data_ini = col_d1.date_input("De:", datetime.now().replace(day=1))
+            data_fim = col_d2.date_input("Até:", datetime.now())
+            
+            query = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obras[o_f])
+            query = query.gte("created_at", data_ini).lte("created_at", f"{data_fim} 23:59:59")
+            dados = query.order("created_at", desc=True).execute().data
+            
+            if dados:
+                df_dados = pd.DataFrame(dados)
+                
+                # --- NOVO: BOTÃO EXPORTAR PDF ---
+                pdf_bytes = exportar_pdf(df_dados, o_f)
+                st.download_button(label="📥 Baixar Relatório em PDF", data=pdf_bytes, file_name=f"Relatorio_{o_f}.pdf", mime="application/pdf", use_container_width=True)
+                
+                st.markdown("---")
+                for g in dados:
+                    with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
+                        st.write(f"Data: {datetime.strptime(g['created_at'][:10], '%Y-%m-%d').strftime('%d/%m/%Y')}")
+                        if g.get('url_comprovante'): st.image(g['url_comprovante'])
+                        
+                        # --- NOVO: BOTÃO EXCLUIR ---
+                        if st.button(f"🗑️ Excluir Lançamento", key=f"del_{g['id']}", use_container_width=True):
+                            # Se tiver foto, apaga do Storage primeiro
+                            if g.get('url_comprovante'):
+                                nome_arq = g['url_comprovante'].split('/')[-1]
+                                try: supabase.storage.from_("comprovantes").remove([nome_arq])
+                                except: pass
+                            
+                            supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute()
+                            st.toast("Lançamento excluído!")
+                            st.rerun()
+            else:
+                st.info("Nenhum gasto encontrado neste período.")
+
+    elif pag == 'OBRA':
+        st.markdown("### 🏗️ Gestão de Obras")
+        with st.container(border=True):
+            n = st.text_input("Nome da Obra")
+            v = st.number_input("Orçamento Total", min_value=0.0)
+            if st.button("Cadastrar", use_container_width=True):
+                supabase.table("obras").insert({"nome_obra": n, "orcamento_previsto": v}).execute()
+                st.success("Obra cadastrada!"); st.session_state.pagina = 'RESUMO'; st.rerun()
