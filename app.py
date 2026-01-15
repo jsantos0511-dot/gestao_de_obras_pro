@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from supabase import create_client
+from supabase import create_client, Client
 import os
 import uuid
 
@@ -28,37 +28,43 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- 3. CSS DESIGN PREMIUM (MANTIDO) ---
+# --- 3. CSS DESIGN PREMIUM (BARRINHAS GIGANTES) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
     .block-container { padding-top: 1rem !important; }
+    
     div.stButton > button[key="trigger"] {
         background-color: #1E1E1E !important;
         border: none !important;
         width: 75px !important; height: 75px !important;
-        border-radius: 22px !important; margin: 0 auto 20px auto !important;
-        display: flex !important; box-shadow: 0 8px 25px rgba(0,0,0,0.3) !important;
+        border-radius: 22px !important;
+        margin: 0 auto 20px auto !important;
+        display: flex !important;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3) !important;
     }
     div.stButton > button[key="trigger"] p { font-size: 38px !important; color: #FFFFFF !important; }
+
     .nav-card button {
         width: 100% !important; height: 85px !important;
         background-color: #ffffff !important; border: 1px solid #f0f0f0 !important;
         border-radius: 18px !important; font-weight: 700 !important;
+        color: #1E1E1E !important; margin-bottom: 12px !important;
     }
+
     .data-card {
         background: #ffffff; padding: 24px; border-radius: 20px;
         border: 1px solid #f0f0f0; box-shadow: 0 10px 30px rgba(0,0,0,0.04);
         margin-bottom: 20px;
     }
+    .label-small { color: #8E8E93; font-size: 11px; font-weight: 700; text-transform: uppercase; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. GESTÃO DE ESTADO ---
+# --- 4. GESTÃO DE NAVEGAÇÃO ---
 if 'menu_aberto' not in st.session_state: st.session_state.menu_aberto = False
 if 'pagina' not in st.session_state: st.session_state.pagina = 'RESUMO'
 
-# Botão Menu Gigante
 icon = "×" if st.session_state.menu_aberto else "☰"
 if st.button(icon, key="trigger"):
     st.session_state.menu_aberto = not st.session_state.menu_aberto
@@ -76,25 +82,27 @@ if st.session_state.menu_aberto:
     st.markdown('</div>', unsafe_allow_html=True)
 
 else:
-    # --- 5. TELAS ---
     pag = st.session_state.pagina
 
     if pag == 'RESUMO':
-        obras = listar_obras()
-        if obras:
-            sel = st.selectbox("Obra", list(obras.keys()), label_visibility="collapsed")
-            id_o = obras[sel]
+        obras_dict = listar_obras()
+        if obras_dict:
+            sel_obra = st.selectbox("Obra", list(obras_dict.keys()), label_visibility="collapsed")
+            id_o = obras_dict[sel_obra]
             info = supabase.table("obras").select("*").eq("id", id_o).single().execute().data
             res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': id_o}).execute()
+            
             gasto_total = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
             orcado = float(info['orcamento_previsto'])
             
             st.markdown(f"""
                 <div class="data-card">
-                    <small style="color:gray;">INVESTIMENTO UTILIZADO</small>
-                    <h2 style="margin:0;">{formatar_real(gasto_total)}</h2>
-                    <hr style="opacity:0.1;">
-                    <small>SALDO: <b>{formatar_real(orcado - gasto_total)}</b></small>
+                    <div class="label-small">Gasto Acumulado</div>
+                    <div style="font-size: 34px; font-weight: 800; color: #1c1c1e; margin: 5px 0;">{formatar_real(gasto_total)}</div>
+                    <div style="display:flex; justify-content:space-between; margin-top:20px; padding-top:15px; border-top: 1px solid #f5f5f5;">
+                        <div><div class="label-small">Orçado</div><b>{formatar_real(orcado)}</b></div>
+                        <div style="text-align:right;"><div class="label-small">Saldo</div><b style="color:#34c759;">{formatar_real(orcado - gasto_total)}</b></div>
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
             if res_s.data:
@@ -110,35 +118,34 @@ else:
             valor = st.number_input("Valor Pago", min_value=0.0, step=0.01)
             foto = st.camera_input("Tirar foto do recibo")
             
-            if st.button("SALVAR REGISTRO", use_container_width=True, type="primary"):
-                url_foto = None
+            if st.button("CONCLUIR LANÇAMENTO", use_container_width=True, type="primary"):
+                url_f = None
                 if foto:
                     try:
-                        nome_arquivo = f"{uuid.uuid4()}.jpg"
-                        # Envio para o Storage
-                        supabase.storage.from_("comprovantes").upload(nome_arquivo, foto.getvalue())
-                        url_foto = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{nome_arquivo}"
+                        f_name = f"{uuid.uuid4()}.jpg"
+                        supabase.storage.from_("comprovantes").upload(f_name, foto.getvalue())
+                        url_f = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{f_name}"
                     except Exception as e:
-                        st.error(f"Erro ao salvar imagem: {e}")
+                        st.error(f"Erro ao salvar foto: {e}")
 
                 try:
                     supabase.table("lancamentos_obra").insert({
                         "obra_id": obras[o_sel], "categoria_id": cats[c_sel],
-                        "descricao": desc, "valor": valor, "url_comprovante": url_foto
+                        "descricao": desc, "valor": valor, "url_comprovante": url_f
                     }).execute()
-                    st.success("Gasto salvo!"); st.session_state.pagina = 'RESUMO'; st.rerun()
+                    st.success("Lançamento concluído!"); st.session_state.pagina = 'RESUMO'; st.rerun()
                 except Exception as e:
                     st.error(f"Erro no banco: {e}")
 
     elif pag == 'LISTA':
-        st.markdown("### 📋 Histórico")
+        st.markdown("### 📋 Histórico Detalhado")
         obras = listar_obras()
         if obras:
-            o_f = st.selectbox("Selecione a Obra:", list(obras.keys()))
+            o_f = st.selectbox("Obra:", list(obras.keys()))
             dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obras[o_f]).order("id", desc=True).execute().data
             for g in dados:
                 with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
                     if g.get('url_comprovante'):
                         st.image(g['url_comprovante'])
                     else:
-                        st.caption("Sem foto disponível.")
+                        st.caption("Nenhuma foto anexada.")
