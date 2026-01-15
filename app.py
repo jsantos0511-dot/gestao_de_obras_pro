@@ -37,23 +37,23 @@ def gerar_pdf(df, nome_obra):
     pdf.cell(190, 10, f"Relatorio ROSECON - {nome_obra}", ln=True, align="C")
     pdf.ln(10)
     
-    # Cabeçalho
+    # Cabeçalho com larguras ajustadas
     pdf.set_font("Arial", "B", 10)
-    pdf.cell(30, 10, "Data", 1)
-    pdf.cell(90, 10, "Descricao", 1)
-    pdf.cell(30, 10, "Categoria", 1)
-    pdf.cell(40, 10, "Valor", 1)
+    pdf.cell(25, 10, "Data", 1)       # Diminuído de 30 para 25
+    pdf.cell(75, 10, "Descricao", 1)  # Ajustado
+    pdf.cell(55, 10, "Categoria", 1)  # Aumentado para dar mais espaço
+    pdf.cell(35, 10, "Valor", 1)      # Diminuído de 40 para 35
     pdf.ln()
     
     # Itens
-    pdf.set_font("Arial", "", 10)
+    pdf.set_font("Arial", "", 9)
     total = 0
     for _, row in df.iterrows():
         data_f = datetime.strptime(row['created_at'][:10], '%Y-%m-%d').strftime('%d/%m/%Y')
-        pdf.cell(30, 10, data_f, 1)
-        pdf.cell(90, 10, str(row['descricao'])[:40], 1)
-        pdf.cell(30, 10, str(row['categorias_obra']['nome_categoria']), 1)
-        pdf.cell(40, 10, f"R$ {row['valor']:,.2f}", 1)
+        pdf.cell(25, 10, data_f, 1)
+        pdf.cell(75, 10, str(row['descricao'])[:45], 1)
+        pdf.cell(55, 10, str(row['categorias_obra']['nome_categoria']), 1)
+        pdf.cell(35, 10, f"R$ {row['valor']:,.2f}", 1)
         pdf.ln()
         total += row['valor']
     
@@ -61,21 +61,36 @@ def gerar_pdf(df, nome_obra):
     pdf.set_font("Arial", "B", 12)
     pdf.cell(190, 10, f"TOTAL: {formatar_real(total)}", ln=True, align="R")
     
-    # Retorna o PDF como string de bytes
     return pdf.output(dest='S').encode('latin-1', 'replace')
 
-# --- 3. ESTILO VISUAL ---
+# --- 3. ESTILO VISUAL (CORREÇÃO DE CORES DASHBOARD) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
     .block-container { padding-top: 1rem !important; }
+    
+    /* Botão Menu */
     div.stButton > button[key="trigger"] {
         background-color: #1E1E1E !important; width: 75px !important; height: 75px !important;
         border-radius: 22px !important; margin: 0 auto 20px auto !important; display: flex !important;
     }
     div.stButton > button[key="trigger"] p { font-size: 38px !important; color: #FFFFFF !important; }
+
+    /* Estilo Dashboard - Forçando visibilidade */
+    .data-card { 
+        background: #ffffff; 
+        padding: 24px; 
+        border-radius: 20px; 
+        border: 1px solid #e0e0e0; 
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    .data-card h2 { color: #1E1E1E !important; margin: 0; font-weight: 800; }
+    .data-card small { color: #555555 !important; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+    .data-card b { color: #000000 !important; }
+    
+    /* Botões Navegação */
     .nav-card button { width: 100% !important; height: 85px !important; border-radius: 18px !important; font-weight: 700 !important; }
-    .data-card { background: #ffffff; padding: 24px; border-radius: 20px; border: 1px solid #f0f0f0; margin-bottom: 20px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -107,8 +122,19 @@ else:
             info = supabase.table("obras").select("*").eq("id", obras[sel]).single().execute().data
             res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': obras[sel]}).execute()
             gasto = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
-            st.markdown(f'<div class="data-card"><small>GASTO TOTAL</small><h2>{formatar_real(gasto)}</h2><hr><small>SALDO: {formatar_real(float(info["orcamento_previsto"]) - gasto)}</small></div>', unsafe_allow_html=True)
-            if res_s.data: st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
+            
+            # Dashboard com cores fixas
+            st.markdown(f'''
+                <div class="data-card">
+                    <small>INVESTIMENTO ATUAL</small>
+                    <h2>{formatar_real(gasto)}</h2>
+                    <hr style="border: 0.5px solid #eee;">
+                    <small>SALDO EM CAIXA: <b>{formatar_real(float(info["orcamento_previsto"]) - gasto)}</b></small>
+                </div>
+            ''', unsafe_allow_html=True)
+            
+            if res_s.data:
+                st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
 
     elif pag == 'GASTO':
         st.markdown("### 💸 Novo Lançamento")
@@ -140,7 +166,6 @@ else:
             dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obras[o_f]).gte("created_at", d_ini).lte("created_at", f"{d_fim} 23:59:59").order("created_at", desc=True).execute().data
             
             if dados:
-                # Gerar e disponibilizar PDF
                 df_dados = pd.DataFrame(dados)
                 pdf_bytes = gerar_pdf(df_dados, o_f)
                 st.download_button("📥 Baixar Relatório PDF", pdf_bytes, f"Relatorio_{o_f}.pdf", "application/pdf", use_container_width=True)
@@ -149,6 +174,9 @@ else:
                     with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
                         if g.get('url_comprovante'): st.image(g['url_comprovante'])
                         if st.button("🗑️ Excluir Gasto", key=f"del_{g['id']}", use_container_width=True):
+                            if g.get('url_comprovante'):
+                                try: supabase.storage.from_("comprovantes").remove([g['url_comprovante'].split('/')[-1]])
+                                except: pass
                             supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute()
                             st.rerun()
             else:
