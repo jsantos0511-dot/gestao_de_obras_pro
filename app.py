@@ -3,6 +3,7 @@ import pandas as pd
 from supabase import create_client, Client
 import os
 import uuid
+import re
 from datetime import datetime
 from fpdf import FPDF
 
@@ -26,7 +27,6 @@ if 'logado' not in st.session_state: st.session_state.logado = False
 if 'user_perfil' not in st.session_state: st.session_state.user_perfil = None
 if 'pagina' not in st.session_state: st.session_state.pagina = 'RESUMO'
 if 'menu_aberto' not in st.session_state: st.session_state.menu_aberto = False
-# Estados para edição
 if 'forn_edit_id' not in st.session_state: st.session_state.forn_edit_id = None
 if 'clie_edit_id' not in st.session_state: st.session_state.clie_edit_id = None
 
@@ -41,7 +41,23 @@ def realizar_login(email, senha):
     except: pass
     return False
 
-# --- 3. ESTILO VISUAL ---
+# --- 3. FUNÇÕES DE FORMATAÇÃO (MÁSCARAS) ---
+def formatar_cnpj(cnpj):
+    # Remove tudo que não é número
+    num = re.sub(r'\D', '', cnpj)
+    if len(num) == 14:
+        return f"{num[:2]}.{num[2:5]}.{num[5:8]}/{num[8:12]}-{num[12:]}"
+    return cnpj
+
+def formatar_telefone(tel):
+    num = re.sub(r'\D', '', tel)
+    if len(num) == 11:
+        return f"({num[:2]}) {num[2:7]}-{num[7:]}"
+    elif len(num) == 10:
+        return f"({num[:2]}) {num[2:6]}-{num[6:]}"
+    return tel
+
+# --- 4. ESTILO VISUAL ---
 st.markdown(f"""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {{display: none;}}
@@ -65,7 +81,7 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 4. TELA DE LOGIN ---
+# --- 5. TELA DE LOGIN ---
 if not st.session_state.logado:
     st.markdown("<br><br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 2, 1])
@@ -80,7 +96,7 @@ if not st.session_state.logado:
                 else: st.error("Acesso negado.")
     st.stop()
 
-# --- 5. CABEÇALHO ---
+# --- 6. CABEÇALHO ---
 head_col1, head_col2 = st.columns([0.15, 0.85])
 with head_col1:
     icon = "×" if st.session_state.menu_aberto else "☰"
@@ -91,7 +107,7 @@ with head_col2:
     st.image(LOGO_URL, width=195)
 st.markdown("---") 
 
-# --- 6. FUNÇÕES DE APOIO ---
+# --- 7. FUNÇÕES DE APOIO ---
 def formatar_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
 
@@ -107,7 +123,7 @@ def listar_fornecedores():
     res = supabase.table("fornecedores").select("id, nome_fornecedor").order("nome_fornecedor").execute()
     return {item['nome_fornecedor']: item['id'] for item in res.data}
 
-# --- 7. LÓGICA DO MENU ---
+# --- 8. LÓGICA DO MENU ---
 if st.session_state.menu_aberto:
     st.markdown('<div class="nav-card">', unsafe_allow_html=True)
     perfil = st.session_state.user_perfil
@@ -122,7 +138,7 @@ if st.session_state.menu_aberto:
     if st.button("Sair (Logout)", type="secondary"): st.session_state.logado = False; st.session_state.menu_aberto=False; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-# --- 8. TELAS ---
+# --- 9. TELAS ---
 else:
     pag, perfil = st.session_state.pagina, st.session_state.user_perfil
 
@@ -168,30 +184,34 @@ else:
         with st.container(border=True):
             fn = st.text_input("Nome da Empresa*", value=dados_edit["nome_fornecedor"])
             fr = st.text_input("Representante*", value=dados_edit["representante"])
-            ft = st.text_input("Telefone*", value=dados_edit["telefone"])
+            ft = st.text_input("Telefone*", value=dados_edit["telefone"], help="Somente números")
             fw = st.text_input("WhatsApp", value=dados_edit["whatsapp"], placeholder="(99) 99999-9999")
             fc = st.text_input("CNPJ", value=dados_edit["cnpj"], placeholder="00.000.000/0000-00")
             fe = st.text_input("E-mail", value=dados_edit["email"])
             fa = st.text_area("Endereço", value=dados_edit["endereco"])
             
-            c1, c2 = st.columns(2)
-            if st.session_state.forn_edit_id:
-                if c1.button("ATUALIZAR", use_container_width=True, type="primary"):
-                    supabase.table("fornecedores").update({"nome_fornecedor": fn, "representante": fr, "telefone": ft, "whatsapp": fw, "cnpj": fc, "email": fe, "endereco": fa}).eq("id", st.session_state.forn_edit_id).execute()
-                    st.session_state.forn_edit_id = None; st.rerun()
-                if c2.button("CANCELAR", use_container_width=True): st.session_state.forn_edit_id = None; st.rerun()
-            else:
-                if st.button("CADASTRAR", use_container_width=True, type="primary"):
-                    if not fn or not fr or not ft: st.error("Preencha os obrigatórios")
+            if st.button("SALVAR FORNECEDOR", use_container_width=True, type="primary"):
+                # Aplica as máscaras antes de salvar
+                ft_format = formatar_telefone(ft)
+                fw_format = formatar_telefone(fw)
+                fc_format = formatar_cnpj(fc)
+
+                if not fn or not fr or not ft: st.error("Preencha os obrigatórios")
+                else:
+                    payload = {"nome_fornecedor": fn, "representante": fr, "telefone": ft_format, "whatsapp": fw_format, "cnpj": fc_format, "email": fe, "endereco": fa}
+                    if st.session_state.forn_edit_id:
+                        supabase.table("fornecedores").update(payload).eq("id", st.session_state.forn_edit_id).execute()
+                        st.session_state.forn_edit_id = None
                     else:
-                        supabase.table("fornecedores").insert({"nome_fornecedor": fn, "representante": fr, "telefone": ft, "whatsapp": fw, "cnpj": fc, "email": fe, "endereco": fa}).execute()
-                        st.rerun()
+                        supabase.table("fornecedores").insert(payload).execute()
+                    st.success("Salvo com sucesso!"); st.rerun()
         
         st.markdown("---")
         lista_f = supabase.table("fornecedores").select("*").order("nome_fornecedor").execute().data
         for f in (lista_f or []):
             with st.expander(f"🏢 {f['nome_fornecedor']}"):
                 st.write(f"**Contato:** {f['representante']} | **Tel:** {f['telefone']}")
+                st.write(f"**WhatsApp:** {f['whatsapp']} | **CNPJ:** {f['cnpj']}")
                 col1, col2 = st.columns(2)
                 if col1.button("📝 Editar", key=f"ef_{f['id']}", use_container_width=True): st.session_state.forn_edit_id=f['id']; st.rerun()
                 if col2.button("🗑️ Excluir", key=f"df_{f['id']}", use_container_width=True): supabase.table("fornecedores").delete().eq("id", f['id']).execute(); st.rerun()
@@ -204,39 +224,39 @@ else:
             if res_edit.data: dados_edit = res_edit.data
 
         with st.container(border=True):
-            st.markdown("#### " + ("Editar Cliente" if st.session_state.clie_edit_id else "Novo Cadastro"))
-            cn = st.text_input("Nome/Empresa do Cliente*", value=dados_edit["nome_cliente"])
-            cr = st.text_input("Nome do Representante*", value=dados_edit["representante"])
-            ct = st.text_input("Telefone Principal*", value=dados_edit["telefone"])
-            cw = st.text_input("WhatsApp", value=dados_edit["whatsapp"], placeholder="(99) 99999-9999")
-            cc = st.text_input("CNPJ", value=dados_edit["cnpj"], placeholder="00.000.000/0000-00")
+            cn = st.text_input("Nome/Empresa*", value=dados_edit["nome_cliente"])
+            cr = st.text_input("Representante*", value=dados_edit["representante"])
+            ct = st.text_input("Telefone*", value=dados_edit["telefone"])
+            cw = st.text_input("WhatsApp", value=dados_edit["whatsapp"])
+            cc = st.text_input("CNPJ", value=dados_edit["cnpj"])
             ce = st.text_input("E-mail", value=dados_edit["email"])
-            ca = st.text_area("Endereço Completo", value=dados_edit["endereco"])
+            ca = st.text_area("Endereço", value=dados_edit["endereco"])
 
-            c1, c2 = st.columns(2)
-            if st.session_state.clie_edit_id:
-                if c1.button("ATUALIZAR CLIENTE", use_container_width=True, type="primary"):
-                    supabase.table("clientes").update({"nome_cliente": cn, "representante": cr, "telefone": ct, "whatsapp": cw, "cnpj": cc, "email": ce, "endereco": ca}).eq("id", st.session_state.clie_edit_id).execute()
-                    st.session_state.clie_edit_id = None; st.rerun()
-                if c2.button("CANCELAR", use_container_width=True): st.session_state.clie_edit_id = None; st.rerun()
-            else:
-                if st.button("CADASTRAR CLIENTE", use_container_width=True, type="primary"):
-                    if not cn or not cr or not ct: st.error("Preencha os campos obrigatórios (*)")
+            if st.button("SALVAR CLIENTE", use_container_width=True, type="primary"):
+                # Aplica as máscaras antes de salvar
+                ct_f = formatar_telefone(ct)
+                cw_f = formatar_telefone(cw)
+                cc_f = formatar_cnpj(cc)
+
+                if not cn or not cr or not ct: st.error("Preencha os obrigatórios")
+                else:
+                    payload = {"nome_cliente": cn, "representante": cr, "telefone": ct_f, "whatsapp": cw_f, "cnpj": cc_f, "email": ce, "endereco": ca}
+                    if st.session_state.clie_edit_id:
+                        supabase.table("clientes").update(payload).eq("id", st.session_state.clie_edit_id).execute()
+                        st.session_state.clie_edit_id = None
                     else:
-                        supabase.table("clientes").insert({"nome_cliente": cn, "representante": cr, "telefone": ct, "whatsapp": cw, "cnpj": cc, "email": ce, "endereco": ca}).execute()
-                        st.success("Cliente cadastrado!"); st.rerun()
+                        supabase.table("clientes").insert(payload).execute()
+                    st.success("Cliente Salvo!"); st.rerun()
 
         st.markdown("---")
         lista_c = supabase.table("clientes").select("*").order("nome_cliente").execute().data
-        if lista_c:
-            for c in lista_c:
-                with st.expander(f"👤 {c['nome_cliente']} ({c['representante']})"):
-                    st.write(f"**Tel:** {c['telefone']} | **CNPJ:** {c['cnpj']}")
-                    st.write(f"**E-mail:** {c['email']}")
-                    st.write(f"**Endereço:** {c['endereco']}")
-                    ced, cdl = st.columns(2)
-                    if ced.button("📝 Editar", key=f"ec_{c['id']}", use_container_width=True): st.session_state.clie_edit_id = c['id']; st.rerun()
-                    if cdl.button("🗑️ Excluir", key=f"dc_{c['id']}", use_container_width=True): supabase.table("clientes").delete().eq("id", c['id']).execute(); st.rerun()
+        for c in (lista_c or []):
+            with st.expander(f"👤 {c['nome_cliente']}"):
+                st.write(f"**Contato:** {c['representante']} | **Tel:** {c['telefone']}")
+                st.write(f"**WhatsApp:** {c['whatsapp']} | **CNPJ:** {c['cnpj']}")
+                ce_ed, ce_dl = st.columns(2)
+                if ce_ed.button("📝 Editar", key=f"ec_{c['id']}", use_container_width=True): st.session_state.clie_edit_id = c['id']; st.rerun()
+                if ce_dl.button("🗑️ Excluir", key=f"dc_{c['id']}", use_container_width=True): supabase.table("clientes").delete().eq("id", c['id']).execute(); st.rerun()
 
     elif pag == 'LISTA':
         st.markdown("### 📋 Histórico")
