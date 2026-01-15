@@ -1,10 +1,10 @@
 import streamlit as st
-import pd
+import pandas as pd  # CORRIGIDO: Agora o sistema reconhece o pandas
 from supabase import create_client, Client
 import os
 import uuid
 
-# --- CONEXÃO ---
+# --- 1. CONEXÃO ---
 SUPABASE_URL = "https://ryzcivhjohgtzixqflwo.supabase.co"
 SUPABASE_KEY = "sb_publishable_Mbx3FHs_VoprLY2e9d1QMQ_5309Bglr"
 
@@ -16,7 +16,7 @@ supabase = get_supabase()
 
 st.set_page_config(page_title="ROSECON Pro", layout="centered")
 
-# --- FUNÇÕES CONSOLIDADAS ---
+# --- 2. FUNÇÕES DE APOIO ---
 def formatar_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
 
@@ -28,7 +28,7 @@ def listar_categorias():
     res = supabase.table("categorias_obra").select("id, nome_categoria").execute()
     return {item['nome_categoria']: item['id'] for item in res.data}
 
-# --- CSS DESIGN PREMIUM ---
+# --- 3. DESIGN (BARRINHAS GRANDES) ---
 st.markdown("""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {display: none;}
@@ -36,9 +36,12 @@ st.markdown("""
     
     div.stButton > button[key="trigger"] {
         background-color: #1E1E1E !important;
+        border: none !important;
         width: 75px !important; height: 75px !important;
-        border-radius: 22px !important; margin: 0 auto 20px auto !important;
-        display: flex !important; box-shadow: 0 8px 25px rgba(0,0,0,0.3) !important;
+        border-radius: 22px !important;
+        margin: 0 auto 20px auto !important;
+        display: flex !important;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.3) !important;
     }
     div.stButton > button[key="trigger"] p { font-size: 38px !important; color: #FFFFFF !important; }
 
@@ -56,7 +59,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- NAVEGAÇÃO ---
+# --- 4. NAVEGAÇÃO ---
 if 'menu_aberto' not in st.session_state: st.session_state.menu_aberto = False
 if 'pagina' not in st.session_state: st.session_state.pagina = 'RESUMO'
 
@@ -76,7 +79,7 @@ if st.session_state.menu_aberto:
         if st.button("📋\nRelatórios"): st.session_state.pagina='LISTA'; st.session_state.menu_aberto=False; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 else:
-    # --- TELAS ---
+    # --- 5. TELAS ---
     if st.session_state.pagina == 'RESUMO':
         obras = listar_obras()
         if obras:
@@ -87,40 +90,43 @@ else:
             
             st.markdown(f"""
                 <div class="data-card">
-                    <small style="color:gray;">GASTO TOTAL</small>
+                    <small style="color:gray;">INVESTIMENTO UTILIZADO</small>
                     <h2 style="margin:0;">{formatar_real(gasto)}</h2>
                     <hr>
-                    <small>SALDO: <b>{formatar_real(float(info['orcamento_previsto']) - gasto)}</b></small>
+                    <small>SALDO DISPONÍVEL: <b>{formatar_real(float(info['orcamento_previsto']) - gasto)}</b></small>
                 </div>
             """, unsafe_allow_html=True)
-            if res_s.data: st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
+            if res_s.data:
+                st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
 
     elif st.session_state.pagina == 'GASTO':
-        st.markdown("### 💸 Novo Gasto")
+        st.markdown("### 💸 Registrar Novo Gasto")
         obras, cats = listar_obras(), listar_categorias()
         with st.container(border=True):
-            o = st.selectbox("Obra", list(obras.keys()))
-            c = st.selectbox("Categoria", list(cats.keys()))
-            d = st.text_input("Descrição")
-            v = st.number_input("Valor", min_value=0.0)
-            foto = st.camera_input("Foto do Recibo")
+            o_sel = st.selectbox("Obra", list(obras.keys()))
+            c_sel = st.selectbox("Categoria", list(cats.keys()))
+            desc = st.text_input("Descrição")
+            valor = st.number_input("Valor Pago", min_value=0.0)
+            foto = st.camera_input("Foto do Comprovante")
             
-            if st.button("SALVAR", use_container_width=True, type="primary"):
+            if st.button("CONCLUIR LANÇAMENTO", use_container_width=True, type="primary"):
                 url_f = None
                 if foto:
                     try:
                         f_name = f"{uuid.uuid4()}.jpg"
                         supabase.storage.from_("comprovantes").upload(f_name, foto.getvalue())
                         url_f = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{f_name}"
-                    except: st.warning("Erro ao salvar foto no Storage.")
+                    except:
+                        st.warning("Aviso: Foto não salva. Verifique o Bucket no Supabase.")
                 
                 try:
                     supabase.table("lancamentos_obra").insert({
-                        "obra_id": obras[o], "categoria_id": cats[c],
-                        "descricao": d, "valor": v, "url_comprovante": url_f
+                        "obra_id": obras[o_sel], "categoria_id": cats[c_sel],
+                        "descricao": desc, "valor": valor, "url_comprovante": url_f
                     }).execute()
-                    st.success("Salvo!"); st.session_state.pagina = 'RESUMO'; st.rerun()
-                except Exception as e: st.error(f"Erro no Banco: {e}")
+                    st.success("Gasto registrado!"); st.session_state.pagina = 'RESUMO'; st.rerun()
+                except Exception as e:
+                    st.error(f"Erro no Banco: {e}")
 
     elif st.session_state.pagina == 'LISTA':
         st.markdown("### 📋 Histórico")
@@ -131,4 +137,4 @@ else:
             for g in dados:
                 with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
                     if g.get('url_comprovante'): st.image(g['url_comprovante'])
-                    else: st.caption("Sem foto.")
+                    else: st.caption("Nenhuma foto disponível.")
