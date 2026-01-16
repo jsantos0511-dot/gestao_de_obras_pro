@@ -68,25 +68,47 @@ def aplicar_mask_tel(tel):
         return f"({num[:2]}) {num[2:6]}-{num[6:]}"
     return tel
 
-# --- 4. ESTILO VISUAL ---
+# --- 4. ESTILO VISUAL (CORREÇÃO DE FONTES E LIMPEZA) ---
 st.markdown(f"""
     <style>
-    [data-testid="stSidebar"], [data-testid="stHeader"] {{display: none;}}
-    .block-container {{ padding-top: 1rem !important; }}
-    img {{ border-radius: 0px !important; }}
-    .stImage > img {{ border-radius: 0px !important; display: block; margin-left: auto; margin-right: auto; }}
-    .data-card {{ 
-        background: #ffffff; padding: 20px; border-radius: 15px; 
-        border: 1px solid #eee; margin-bottom: 15px; color: #1e1e1e; 
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    
+    html, body, [class*="st-"] {{
+        font-family: 'Inter', sans-serif !important;
     }}
-    .data-card h2 {{ color: #1E1E1E !important; margin: 0; font-weight: 800; }}
+
+    [data-testid="stSidebar"], [data-testid="stHeader"] {{display: none;}}
+    .block-container {{ padding-top: 2rem !important; }}
+    
+    .stImage > img {{ border-radius: 0px !important; display: block; margin-left: auto; margin-right: auto; }}
+    
+    /* Cards de Dados */
+    .data-card {{ 
+        background: #F8F9FA; padding: 24px; border-radius: 12px; 
+        border: 1px solid #E9ECEF; margin-bottom: 20px; color: #1e1e1e; 
+    }}
+    .data-card small {{ 
+        color: #6C757D; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; font-size: 0.75rem; 
+    }}
+    .data-card h2 {{ 
+        color: #1E1E1E !important; margin-top: 5px; font-weight: 800; font-size: 2rem; 
+    }}
+    
+    /* Botão de Menu */
     div.stButton > button[key="trigger"] {{
         background-color: transparent !important; color: #1E1E1E !important;
         width: 45px !important; height: 45px !important; border: none !important;
-        font-size: 35px !important;
+        font-size: 30px !important;
     }}
-    .nav-card button {{ width: 100% !important; height: 60px !important; font-weight: 700 !important; margin-bottom: 8px !important; }}
+    
+    /* Botões de Navegação */
+    .nav-card button {{ 
+        width: 100% !important; height: 55px !important; font-weight: 600 !important; 
+        margin-bottom: 10px !important; border-radius: 8px !important;
+    }}
+    
+    /* Ajuste de Títulos */
+    h1, h2, h3 {{ font-weight: 700 !important; color: #1E1E1E !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -138,19 +160,19 @@ def listar_clientes():
 def gerar_pdf(df, nome_obra):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(190, 10, f"Relatorio ROSECON - {nome_obra}", ln=True, align="C")
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(190, 10, f"Relatório ROSECON - {nome_obra}", ln=True, align="C")
     pdf.ln(10)
-    pdf.set_font("Arial", "B", 10)
-    pdf.cell(25, 10, "Data", 1); pdf.cell(75, 10, "Descricao", 1); pdf.cell(55, 10, "Categoria", 1); pdf.cell(35, 10, "Valor", 1); pdf.ln()
-    pdf.set_font("Arial", "", 9)
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(25, 10, "Data", 1); pdf.cell(75, 10, "Descrição", 1); pdf.cell(55, 10, "Categoria", 1); pdf.cell(35, 10, "Valor", 1); pdf.ln()
+    pdf.set_font("Helvetica", "", 9)
     total = 0
     for _, row in df.iterrows():
         dt = datetime.strptime(row['created_at'][:10], '%Y-%m-%d').strftime('%d/%m/%Y')
         pdf.cell(25, 10, dt, 1); pdf.cell(75, 10, str(row['descricao'])[:40], 1)
         pdf.cell(55, 10, str(row['categorias_obra']['nome_categoria']), 1); pdf.cell(35, 10, f"R$ {row['valor']:,.2f}", 1); pdf.ln()
         total += row['valor']
-    pdf.ln(5); pdf.set_font("Arial", "B", 12)
+    pdf.ln(5); pdf.set_font("Helvetica", "B", 12)
     pdf.cell(190, 10, f"TOTAL: {formatar_real(total)}", ln=True, align="R")
     return pdf.output(dest='S').encode('latin-1', 'replace')
 
@@ -197,25 +219,21 @@ else:
                 gasto_total = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
                 orcado = float(obra_info['orcamento']) if obra_info['orcamento'] else 0
                 
-                # --- GRÁFICO ORÇADO VS REALIZADO ---
-                st.markdown("### 📊 Saúde Financeira")
+                st.markdown("### Saúde Financeira")
                 if orcado > 0:
                     progresso = min(gasto_total / orcado, 1.0)
-                    cor_barra = "red" if gasto_total > orcado else "#00FF00"
                     st.write(f"**Orçado:** {formatar_real(orcado)} | **Realizado:** {formatar_real(gasto_total)}")
                     st.progress(progresso)
                     if gasto_total > orcado:
-                        st.warning(f"⚠️ Atenção: Obra ultrapassou o orçamento em {formatar_real(gasto_total - orcado)}!")
-                else:
-                    st.info("💡 Defina um orçamento no cadastro da obra para ver o progresso.")
+                        st.warning(f"Atenção: Obra ultrapassou o orçamento em {formatar_real(gasto_total - orcado)}!")
                 
-                st.markdown(f'<div class="data-card"><small>GASTO ACUMULADO</small><h2>{formatar_real(gasto_total)}</h2></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="data-card"><small>Gasto Acumulado</small><h2>{formatar_real(gasto_total)}</h2></div>', unsafe_allow_html=True)
                 if res_s.data: 
-                    st.write("**Gastos por Categoria:**")
+                    st.write("**Distribuição por Categoria:**")
                     st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
 
     elif pag == 'GASTO':
-        st.markdown("### 💸 Lançamento")
+        st.markdown("### Lançamento de Gasto")
         obras, cats, forns = listar_obras(), listar_categorias(), listar_fornecedores()
         with st.container(border=True):
             o_sel = st.selectbox("Obra*", [""] + list(obras.keys()), index=0, key=f"go_{ver}")
@@ -235,7 +253,7 @@ else:
                     limpar_campos(); st.rerun()
 
     elif pag == 'FORN':
-        st.markdown("### 🤝 Fornecedores")
+        st.markdown("### Fornecedores")
         dados_f = {"nome_fornecedor": "", "representante": "", "telefone": "", "whatsapp": "", "cnpj": "", "email": "", "endereco": ""}
         if st.session_state.forn_edit_id:
             res_f = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
@@ -260,7 +278,7 @@ else:
                 if c2.button("🗑️ Excluir", key=f"df_{f['id']}"): supabase.table("fornecedores").delete().eq("id", f['id']).execute(); st.rerun()
 
     elif pag == 'CLIE':
-        st.markdown("### 👤 Clientes")
+        st.markdown("### Clientes")
         dados_c = {"nome_cliente": "", "representante": "", "telefone": "", "whatsapp": "", "cnpj": "", "email": "", "endereco": ""}
         if st.session_state.clie_edit_id:
             res_c = supabase.table("clientes").select("*").eq("id", st.session_state.clie_edit_id).single().execute()
@@ -287,10 +305,10 @@ else:
                     st.rerun()
 
     elif pag == 'LISTA':
-        st.markdown("### 📋 Histórico")
+        st.markdown("### Histórico")
         obras_lista = listar_obras()
         if obras_lista:
-            o_f = st.selectbox("Obra:", [""] + list(obras_lista.keys()), index=0, key=f"lo_{ver}")
+            o_f = st.selectbox("Filtrar por Obra:", [""] + list(obras_lista.keys()), index=0, key=f"lo_{ver}")
             if o_f:
                 c1, c2 = st.columns(2)
                 d_i, d_f = c1.date_input("Início:", datetime.now().replace(day=1)), c2.date_input("Fim:", datetime.now())
@@ -298,33 +316,33 @@ else:
                 if dados:
                     if perfil == 'ADMIN':
                         pdf_b = gerar_pdf(pd.DataFrame(dados), o_f)
-                        st.download_button("📥 PDF", pdf_b, f"Relatorio_{o_f}.pdf", "application/pdf", use_container_width=True)
+                        st.download_button("📥 Baixar PDF", pdf_b, f"Relatorio_{o_f}.pdf", "application/pdf", use_container_width=True)
                     for g in dados:
                         with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
                             if g.get('url_comprovante'): st.image(g['url_comprovante'])
-                            if st.button("🗑️ Excluir", key=f"dg_{g['id']}", use_container_width=True):
+                            if st.button("🗑️ Excluir Lançamento", key=f"dg_{g['id']}", use_container_width=True):
                                 if g.get('url_comprovante'):
                                     try: supabase.storage.from_("comprovantes").remove([g['url_comprovante'].split('/')[-1]])
                                     except: pass
                                 supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
 
     elif pag == 'OBRA' and perfil == 'ADMIN':
-        st.markdown("### 🏗️ Obras")
+        st.markdown("### Minhas Obras")
         dados_o = {"nome_obra": "", "cliente_id": "", "tipo_obra": "", "local_obra": "", "orcamento_previsto": 0.0}
         if st.session_state.obra_edit_id:
             res_eo = supabase.table("obras").select("*").eq("id", st.session_state.obra_edit_id).single().execute()
             if res_eo.data: dados_o = res_eo.data
         clis = listar_clientes(); id_to_name = {v: k for k, v in clis.items()}
         with st.container(border=True):
-            on = st.text_input("Nome*", value=dados_o["nome_obra"], key=f"on_{ver}")
+            on = st.text_input("Nome da Obra*", value=dados_o["nome_obra"], key=f"on_{ver}")
             cl_lista = [""] + list(clis.keys())
             cl_idx = cl_lista.index(id_to_name.get(dados_o["cliente_id"], "")) if dados_o["cliente_id"] in id_to_name else 0
             oc = st.selectbox("Cliente*", cl_lista, index=cl_idx, key=f"oc_{ver}")
             ot_lista = ["", "Residencial", "Comercial", "Reforma", "Industrial", "Outro"]
             ot_idx = ot_lista.index(dados_o["tipo_obra"]) if dados_o["tipo_obra"] in ot_lista else 0
-            ot = st.selectbox("Tipo*", ot_lista, index=ot_idx, key=f"ot_{ver}")
-            ol = st.text_input("Local", value=dados_o["local_obra"], key=f"ol_{ver}")
-            ov = st.number_input("Orçamento", min_value=0.0, value=float(dados_o["orcamento_previsto"]), key=f"ov_{ver}")
+            ot = st.selectbox("Tipo de Obra*", ot_lista, index=ot_idx, key=f"ot_{ver}")
+            ol = st.text_input("Localização", value=dados_o["local_obra"], key=f"ol_{ver}")
+            ov = st.number_input("Orçamento Previsto", min_value=0.0, value=float(dados_o["orcamento_previsto"]), key=f"ov_{ver}")
             if st.button("SALVAR OBRA", type="primary", use_container_width=True):
                 p = {"nome_obra":on,"cliente_id":clis[oc],"tipo_obra":ot,"local_obra":ol,"orcamento_previsto":ov}
                 if st.session_state.obra_edit_id: supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
@@ -333,8 +351,8 @@ else:
         for ob in (supabase.table("obras").select("*, clientes(nome_cliente)").order("created_at", desc=True).execute().data or []):
             with st.expander(f"🏗️ {ob['nome_obra']}"):
                 b1, b2 = st.columns(2)
-                if b1.button("📝", key=f"eob_{ob['id']}"): st.session_state.obra_edit_id=ob['id']; st.rerun()
-                if b2.button("🗑️", key=f"dob_{ob['id']}"):
+                if b1.button("📝 Editar", key=f"eob_{ob['id']}"): st.session_state.obra_edit_id=ob['id']; st.rerun()
+                if b2.button("🗑️ Excluir", key=f"dob_{ob['id']}"):
                     gastos = supabase.table("lancamentos_obra").select("url_comprovante").eq("obra_id", ob['id']).execute().data
                     for g in gastos:
                         if g.get('url_comprovante'):
@@ -344,7 +362,7 @@ else:
                     supabase.table("obras").delete().eq("id", ob['id']).execute(); st.rerun()
 
     elif pag == 'USUARIOS' and perfil == 'ADMIN':
-        st.markdown("### 👥 Equipe")
+        st.markdown("### Gestão de Equipe")
         with st.container(border=True):
             ne, ns = st.text_input("E-mail", key=f"ue_{ver}"), st.text_input("Senha", type="password", key=f"us_{ver}")
             np = st.selectbox("Perfil", ["", "LANCADOR", "ADMIN"], index=0, key=f"up_{ver}")
