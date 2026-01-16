@@ -68,10 +68,10 @@ def aplicar_mask_tel(tel):
         return f"({num[:2]}) {num[2:6]}-{num[6:]}"
     return tel
 
-# --- 4. ESTILO VISUAL (CORREÇÃO DE FONTES E LIMPEZA) ---
+# --- 4. ESTILO VISUAL (PADRONIZAÇÃO TOTAL) ---
 st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
     
     html, body, [class*="st-"] {{
         font-family: 'Inter', sans-serif !important;
@@ -82,33 +82,54 @@ st.markdown(f"""
     
     .stImage > img {{ border-radius: 0px !important; display: block; margin-left: auto; margin-right: auto; }}
     
-    /* Cards de Dados */
+    /* Títulos principais */
+    .main-title {{
+        color: #FFFFFF !important;
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 20px;
+    }}
+
+    /* Cards de Dashboard */
+    .metric-container {{
+        background: #1E1E1E;
+        padding: 20px;
+        border-radius: 12px;
+        border: 1px solid #333;
+        margin-bottom: 15px;
+        text-align: center;
+    }}
+    .metric-label {{
+        color: #AAAAAA;
+        font-size: 0.85rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        margin-bottom: 5px;
+    }}
+    .metric-value {{
+        color: #FFFFFF;
+        font-size: 1.6rem;
+        font-weight: 800;
+    }}
+    
+    /* Gasto Acumulado em destaque */
     .data-card {{ 
         background: #F8F9FA; padding: 24px; border-radius: 12px; 
         border: 1px solid #E9ECEF; margin-bottom: 20px; color: #1e1e1e; 
     }}
-    .data-card small {{ 
-        color: #6C757D; text-transform: uppercase; letter-spacing: 1px; font-weight: 600; font-size: 0.75rem; 
-    }}
-    .data-card h2 {{ 
-        color: #1E1E1E !important; margin-top: 5px; font-weight: 800; font-size: 2rem; 
-    }}
+    .data-card small {{ color: #6C757D; text-transform: uppercase; font-weight: 600; font-size: 0.75rem; }}
+    .data-card h2 {{ color: #1E1E1E !important; margin-top: 5px; font-weight: 800; font-size: 2rem; }}
     
-    /* Botão de Menu */
+    /* Navegação */
     div.stButton > button[key="trigger"] {{
-        background-color: transparent !important; color: #1E1E1E !important;
+        background-color: transparent !important; color: #FFFFFF !important;
         width: 45px !important; height: 45px !important; border: none !important;
         font-size: 30px !important;
     }}
-    
-    /* Botões de Navegação */
     .nav-card button {{ 
         width: 100% !important; height: 55px !important; font-weight: 600 !important; 
         margin-bottom: 10px !important; border-radius: 8px !important;
     }}
-    
-    /* Ajuste de Títulos */
-    h1, h2, h3 {{ font-weight: 700 !important; color: #1E1E1E !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -219,13 +240,20 @@ else:
                 gasto_total = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
                 orcado = float(obra_info['orcamento']) if obra_info['orcamento'] else 0
                 
-                st.markdown("### Saúde Financeira")
+                st.markdown('<p class="main-title">Saúde Financeira</p>', unsafe_allow_html=True)
+                
+                # --- KPI CARDS PADRONIZADOS ---
+                kpi_col1, kpi_col2 = st.columns(2)
+                with kpi_col1:
+                    st.markdown(f'<div class="metric-container"><p class="metric-label">Valor Orçado</p><p class="metric-value">{formatar_real(orcado)}</p></div>', unsafe_allow_html=True)
+                with kpi_col2:
+                    st.markdown(f'<div class="metric-container"><p class="metric-label">Valor Realizado</p><p class="metric-value">{formatar_real(gasto_total)}</p></div>', unsafe_allow_html=True)
+                
                 if orcado > 0:
                     progresso = min(gasto_total / orcado, 1.0)
-                    st.write(f"**Orçado:** {formatar_real(orcado)} | **Realizado:** {formatar_real(gasto_total)}")
                     st.progress(progresso)
                     if gasto_total > orcado:
-                        st.warning(f"Atenção: Obra ultrapassou o orçamento em {formatar_real(gasto_total - orcado)}!")
+                        st.error(f"⚠️ Orçamento ultrapassado em {formatar_real(gasto_total - orcado)}")
                 
                 st.markdown(f'<div class="data-card"><small>Gasto Acumulado</small><h2>{formatar_real(gasto_total)}</h2></div>', unsafe_allow_html=True)
                 if res_s.data: 
