@@ -195,7 +195,8 @@ else:
                 if o and c and f_sel and v > 0:
                     url = None
                     if foto:
-                        n_arq = f"{uuid.uuid4()}.jpg"; supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
+                        n_arq = f"{uuid.uuid4()}.jpg"
+                        supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
                         url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
                     supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "fornecedor_id": forns[f_sel], "descricao": d, "valor": v, "url_comprovante": url}).execute()
                     st.success("Salvo!"); st.rerun()
@@ -208,7 +209,7 @@ else:
             res_f = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
             if res_f.data: dados_f = res_f.data
         with st.container(border=True):
-            fn = st.text_input("Nome da Empresa*", value=dados_f["nome_fornecedor"])
+            fn = st.text_input("Empresa*", value=dados_f["nome_fornecedor"])
             ft = st.text_input("Telefone*", value=dados_f["telefone"])
             fc = st.text_input("CNPJ", value=dados_f["cnpj"])
             if st.button("SALVAR FORNECEDOR", use_container_width=True, type="primary"):
@@ -232,7 +233,7 @@ else:
             res_c = supabase.table("clientes").select("*").eq("id", st.session_state.clie_edit_id).single().execute()
             if res_c.data: dados_c = res_c.data
         with st.container(border=True):
-            cn = st.text_input("Nome/Empresa*", value=dados_c["nome_cliente"])
+            cn = st.text_input("Cliente*", value=dados_c["nome_cliente"])
             ct = st.text_input("Telefone*", value=dados_c["telefone"])
             cc = st.text_input("CNPJ", value=dados_c["cnpj"])
             if st.button("SALVAR CLIENTE", use_container_width=True, type="primary"):
@@ -266,6 +267,11 @@ else:
                         with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
                             if g.get('url_comprovante'): st.image(g['url_comprovante'])
                             if st.button("🗑️ Excluir", key=f"dg_{g['id']}", use_container_width=True):
+                                if g.get('url_comprovante'):
+                                    try:
+                                        nome_f = g['url_comprovante'].split('/')[-1]
+                                        supabase.storage.from_("comprovantes").remove([nome_f])
+                                    except: pass
                                 supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
 
     elif pag == 'OBRA' and perfil == 'ADMIN':
