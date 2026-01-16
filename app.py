@@ -189,8 +189,8 @@ else:
             o = st.selectbox("Obra", list(obras.keys()))
             c = st.selectbox("Categoria", list(cats.keys()))
             f_sel = st.selectbox("Fornecedor", list(forns.keys()))
-            d = st.text_input("Descrição")
-            v = st.number_input("Valor Pago", min_value=0.0)
+            d = st.text_input("Descrição", key="desc_gasto")
+            v = st.number_input("Valor Pago", min_value=0.0, key="val_gasto")
             foto = st.camera_input("Foto do Recibo")
             if st.button("SALVAR GASTO", use_container_width=True, type="primary"):
                 url = None
@@ -199,7 +199,7 @@ else:
                     supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
                     url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
                 supabase.table("lancamentos_obra").insert({"obra_id": obras[o], "categoria_id": cats[c], "fornecedor_id": forns[f_sel], "descricao": d, "valor": v, "url_comprovante": url}).execute()
-                st.success("Salvo!"); st.session_state.pagina = 'LISTA'; st.rerun()
+                st.success("Lançamento concluído!"); st.rerun()
 
     elif pag == 'FORN':
         st.markdown("### 🤝 Gestão de Fornecedores")
@@ -283,10 +283,8 @@ else:
         if st.session_state.obra_edit_id:
             res_eo = supabase.table("obras").select("*").eq("id", st.session_state.obra_edit_id).single().execute()
             if res_eo.data: dados_o = res_eo.data
-        
         clis = listar_clientes()
         id_to_name = {v: k for k, v in clis.items()}
-        
         with st.container(border=True):
             st.markdown("#### " + ("Editar" if st.session_state.obra_edit_id else "Nova Obra"))
             on = st.text_input("Nome da Obra*", value=dados_o["nome_obra"])
@@ -298,7 +296,6 @@ else:
             ot = st.selectbox("Tipo de Obra", ot_lista, index=ot_idx)
             ol = st.text_input("Local da Obra", value=dados_o["local_obra"])
             ov = st.number_input("Orçamento Previsto", min_value=0.0, value=float(dados_o["orcamento_previsto"]))
-            
             c1, c2 = st.columns(2)
             if st.session_state.obra_edit_id:
                 if c1.button("ATUALIZAR OBRA", type="primary", use_container_width=True):
@@ -310,7 +307,6 @@ else:
                     if on and oc:
                         supabase.table("obras").insert({"nome_obra":on,"cliente_id":clis[oc],"tipo_obra":ot,"local_obra":ol,"orcamento_previsto":ov}).execute()
                         st.rerun()
-        
         st.markdown("---")
         lista_ob = supabase.table("obras").select("*, clientes(nome_cliente)").order("created_at", desc=True).execute().data
         for ob in (lista_ob or []):
@@ -324,7 +320,10 @@ else:
     elif pag == 'USUARIOS' and perfil == 'ADMIN':
         st.markdown("### 👥 Gestão de Equipe")
         with st.container(border=True):
-            ne, ns, np = st.text_input("E-mail"), st.text_input("Senha"), st.selectbox("Perfil", ["LANCADOR", "ADMIN"])
-            if st.button("CRIAR USUÁRIO", use_container_width=True):
-                supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute(); st.rerun()
+            ne = st.text_input("E-mail", key="new_user_email")
+            ns = st.text_input("Senha", type="password", key="new_user_pass")
+            np = st.selectbox("Perfil", ["LANCADOR", "ADMIN"], key="new_user_perfil")
+            if st.button("CRIAR USUÁRIO", use_container_width=True, type="primary"):
+                supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
+                st.success("Usuário criado!"); st.rerun()
         st.table(pd.DataFrame(supabase.table("usuarios").select("email, perfil").execute().data))
