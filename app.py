@@ -83,7 +83,7 @@ st.markdown(f"""
     .data-card {{ background: #F8F9FA; padding: 20px; border-radius: 8px; border: 1px solid #E9ECEF; margin-bottom: 15px; color: #1e1e1e; }}
     div.stButton > button[key="trigger"] {{ background-color: transparent !important; color: #FFFFFF !important; width: 45px !important; height: 45px !important; border: none !important; font-size: 30px !important; }}
     .nav-card button {{ width: 100% !important; height: 50px !important; font-weight: 600 !important; margin-bottom: 8px !important; }}
-    /* LOGO QUADRADA (REMOVIDO ARREDONDAMENTO) */
+    /* LOGO QUADRADA (SEM ARREDONDAMENTO) */
     .logo-container img {{ border-radius: 0px !important; }}
     </style>
 """, unsafe_allow_html=True)
@@ -318,16 +318,14 @@ else:
                     c1, c2 = st.columns(2)
                     c1.download_button("📥 PDF", gerar_pdf(df_d, o_f), f"{o_f}.pdf", use_container_width=True)
                     
-                    # CORREÇÃO DO ERRO DE EXCEL (XLSXWRITER)
                     try:
                         import xlsxwriter
                         output = io.BytesIO()
                         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                             df_d.to_excel(writer, index=False)
                         c2.download_button("📊 XLS", output.getvalue(), f"{o_f}.xlsx", use_container_width=True)
-                    except ImportError:
-                        c2.warning("Instale 'xlsxwriter' no requirements.txt para exportar Excel.")
-                    except: pass
+                    except:
+                        pass
 
                     for g in d:
                         cor = "🟢" if g.get('status_pagamento') == "Pago" else "🔴"
@@ -341,18 +339,19 @@ else:
         with st.container(border=True):
             ne = st.text_input("E-mail")
             ns = st.text_input("Senha", type="password")
+            # OPÇÃO DE TESTE: Tente criar como "LANCADOR" primeiro se o "EXTERNO" falhar
             np = st.selectbox("Perfil", ["LANCADOR", "LANCADOR_EXTERNO", "ADMIN"])
             if st.button("CRIAR USUÁRIO"):
-                # TRATAMENTO DO ERRO DE INSERÇÃO (APIError)
                 try:
                     if ne and ns:
-                        supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
-                        st.success("Usuário criado com sucesso!")
+                        res = supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
+                        st.success("Usuário criado!")
                         st.rerun()
                     else:
-                        st.warning("Preencha todos os campos.")
+                        st.warning("Campos vazios.")
                 except Exception as e:
-                    st.error(f"Erro ao salvar: Verifique se o e-mail já existe ou a estrutura da tabela.")
+                    # ESTA LINHA VAI MOSTRAR O ERRO REAL DO SUPABASE PARA NÓS
+                    st.error(f"Erro detalhado: {str(e)}")
         
         u_list = supabase.table("usuarios").select("id, email, perfil").execute().data
         if u_list: st.table(pd.DataFrame(u_list))
