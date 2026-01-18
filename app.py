@@ -32,13 +32,11 @@ if 'form_version' not in st.session_state: st.session_state.form_version = 0
 
 if 'forn_edit_id' not in st.session_state: st.session_state.forn_edit_id = None
 if 'clie_edit_id' not in st.session_state: st.session_state.clie_edit_id = None
-if 'obra_edit_id' not in st.session_state: st.session_state.obra_edit_id = None
 
 def limpar_campos():
     st.session_state.form_version += 1
     st.session_state.forn_edit_id = None
     st.session_state.clie_edit_id = None
-    st.session_state.obra_edit_id = None
 
 def realizar_login(email, senha):
     try:
@@ -120,11 +118,11 @@ with h2:
 st.markdown("---") 
 
 # --- 7. FUNÇÕES DE APOIO ---
-def listar_obras():
+def listar_obras_unicas():
     try:
-        res = supabase.table("obras").select("*").execute()
-        return {str(item['nome_obra']): item for item in res.data}
-    except: return {}
+        res = supabase.table("lancamentos_obra").select("nome_obra").execute()
+        return sorted(list(set([str(item['nome_obra']) for item in res.data if item['nome_obra']])))
+    except: return []
 
 def listar_categorias():
     try:
@@ -164,19 +162,6 @@ def gerar_pdf(df, nome_obra):
     pdf.cell(190, 10, f"TOTAL: {formatar_real(total)}", ln=True, align="R")
     return pdf.output(dest='S').encode('latin-1', 'replace')
 
-def gerar_excel(df):
-    output = io.BytesIO()
-    df_excel = df.copy()
-    if 'categorias_obra' in df_excel.columns:
-        df_excel['Categoria'] = df_excel['categorias_obra'].apply(lambda x: x['nome_categoria'] if isinstance(x, dict) else '')
-    if 'fornecedores' in df_excel.columns:
-        df_excel['Fornecedor'] = df_excel['fornecedores'].apply(lambda x: x['nome_fornecedor'] if isinstance(x, dict) else '')
-    colunas_uteis = ['created_at', 'descricao', 'Categoria', 'Fornecedor', 'valor', 'status_pagamento']
-    df_final = df_excel[[c for c in colunas_uteis if c in df_excel.columns]]
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_final.to_excel(writer, index=False, sheet_name='Lancamentos')
-    return output.getvalue()
-
 # --- 8. MENU ---
 if st.session_state.menu_aberto:
     st.markdown('<div class="nav-card">', unsafe_allow_html=True)
@@ -187,77 +172,76 @@ if st.session_state.menu_aberto:
     if st.button("👤 Clientes"): st.session_state.pagina='CLIE'; st.session_state.menu_aberto=False; st.rerun()
     if st.button("🤝 Fornecedores"): st.session_state.pagina='FORN'; st.session_state.menu_aberto=False; st.rerun()
     if perf == 'ADMIN':
-        if st.button("🏗️ Minhas Obras"): st.session_state.pagina='OBRA'; st.session_state.menu_aberto=False; st.rerun()
         if st.button("👥 Gestão de Equipe"): st.session_state.pagina='USUARIOS'; st.session_state.menu_aberto=False; st.rerun()
     if st.button("Sair"): st.session_state.logado = False; st.session_state.menu_aberto=False; st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
 # --- 9. TELAS ---
 else:
-    pag, perf, ver = st.session_state.pagina, st.session_state.user_perfil, st.session_state.form_version
+    pag, ver = st.session_state.pagina, st.session_state.form_version
 
     if pag == 'RESUMO':
-        obs_dict = listar_obras()
-        if not obs_dict: st.info("Cadastre uma obra em 'Minhas Obras'.")
+        obras = listar_obras_unicas()
+        if not obras: st.info("Realize o primeiro lançamento para ver o Dashboard.")
         else:
-            sel = st.selectbox("Selecione a Obra", [""] + list(obs_dict.keys()), index=0, key=f"s_res_{ver}")
+            sel = st.selectbox("Selecione a Obra para Análise", [""] + obras, index=0, key=f"s_res_{ver}")
             if sel:
-                o = obs_dict[sel]
-                res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': o['id']}).execute()
-                gasto = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
-                orc = float(o.get('orcamento_previsto',0))
-                # Busca as taxas da obra
-                luc_p = float(o.get('lucro_estimado', 0))
-                imp_p = float(o.get('impostos_estimados', 0))
-                
-                v_imp = orc * (imp_p/100)
-                l_real = orc - gasto - v_imp
-                
-                st.markdown('<p class="main-title">Saúde Financeira</p>', unsafe_allow_html=True)
-                c1,c2,c3,c4 = st.columns(4)
-                c1.markdown(f'<div class="metric-container"><p class="metric-label">Orçado</p><p class="metric-value">{formatar_real(orc)}</p></div>', unsafe_allow_html=True)
-                c2.markdown(f'<div class="metric-container"><p class="metric-label">Exp. Lucro</p><p class="metric-value">{formatar_real(orc*(luc_p/100))}</p></div>', unsafe_allow_html=True)
-                c3.markdown(f'<div class="metric-container"><p class="metric-label">Imposto ({imp_p}%)</p><p class="metric-value">{formatar_real(v_imp)}</p></div>', unsafe_allow_html=True)
-                c4.markdown(f'<div class="metric-container"><p class="metric-label">Lucro Real</p><p class="metric-value" style="color:{"#00FF00" if l_real > 0 else "#FF0000"}">{formatar_real(l_real)}</p></div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="data-card"><h3>Gasto Acumulado: {formatar_real(gasto)}</h3></div>', unsafe_allow_html=True)
-                if res_s.data: st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
+                dados = supabase.table("lancamentos_obra").select("*").eq("nome_obra", sel).execute().data
+                if dados:
+                    df = pd.DataFrame(dados)
+                    gasto = df['valor'].sum()
+                    # Pega os dados do lançamento mais recente desta obra
+                    orc = float(df['orcamento_previsto'].iloc[-1]) if 'orcamento_previsto' in df.columns else 0
+                    luc_p = float(df['lucro_estimado'].iloc[-1]) if 'lucro_estimado' in df.columns else 0
+                    imp_p = float(df['impostos_estimados'].iloc[-1]) if 'impostos_estimados' in df.columns else 0
+                    
+                    v_imp = orc * (imp_p/100)
+                    l_real = orc - gasto - v_imp
+                    
+                    c1,c2,c3,c4 = st.columns(4)
+                    c1.markdown(f'<div class="metric-container"><p class="metric-label">Orçado</p><p class="metric-value">{formatar_real(orc)}</p></div>', unsafe_allow_html=True)
+                    c2.markdown(f'<div class="metric-container"><p class="metric-label">Exp. Lucro</p><p class="metric-value">{formatar_real(orc*(luc_p/100))}</p></div>', unsafe_allow_html=True)
+                    c3.markdown(f'<div class="metric-container"><p class="metric-label">Imposto ({imp_p}%)</p><p class="metric-value">{formatar_real(v_imp)}</p></div>', unsafe_allow_html=True)
+                    c4.markdown(f'<div class="metric-container"><p class="metric-label">Lucro Real</p><p class="metric-value" style="color:{"#00FF00" if l_real > 0 else "#FF0000"}">{formatar_real(l_real)}</p></div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="data-card"><h3>Gasto Acumulado: {formatar_real(gasto)}</h3></div>', unsafe_allow_html=True)
 
     elif pag == 'GASTO':
         st.markdown("### Lançamento de Gasto")
-        obs_dict, cats, forns = listar_obras(), listar_categorias(), listar_fornecedores()
+        cats, forns = listar_categorias(), listar_fornecedores()
         with st.container(border=True):
-            o_s = st.selectbox("Obra*", [""] + list(obs_dict.keys()), index=0, key=f"go_{ver}")
+            obras_existentes = listar_obras_unicas()
+            o_nome = st.selectbox("Obra Existente", [""] + obras_existentes, index=0)
+            o_novo = st.text_input("OU Nome de Nova Obra")
+            obra_final = o_novo if o_novo else o_nome
+            
             c_s = st.selectbox("Categoria*", [""] + list(cats.keys()), index=0, key=f"gc_{ver}")
             f_s = st.selectbox("Fornecedor*", [""] + list(forns.keys()), index=0, key=f"gf_{ver}")
+            
+            c1, c2, c3 = st.columns(3)
+            v_orc = c1.number_input("Valor do Contrato (R$)", min_value=0.0)
+            v_luc = c2.number_input("Lucro (%)", min_value=0.0)
+            v_imp = c3.number_input("Imposto (%)", min_value=0.0)
+            
             d = st.text_input("Descrição", key=f"gd_{ver}")
-            v = st.number_input("Valor", min_value=0.0, key=f"gv_{ver}")
+            v = st.number_input("Valor do Lançamento (R$)", min_value=0.0, key=f"gv_{ver}")
             st_p = st.selectbox("Status", ["", "Pago", "Pendente"], index=0, key=f"gs_{ver}")
-            foto = st.camera_input("Recibo", key=f"gp_{ver}")
-            if st.button("SALVAR GASTO", use_container_width=True, type="primary"):
-                if o_s and c_s and f_s and v > 0:
-                    try:
-                        url = None
-                        if foto:
-                            n_arq = f"{uuid.uuid4()}.jpg"
-                            supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
-                            url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
-                        
-                        # Salvando o gasto COM os novos campos de lucro/imposto capturados da obra
-                        obra_ref = obs_dict[o_s]
-                        dados_lanc = {
-                            "obra_id": obra_ref['id'], 
-                            "categoria_id": cats[c_s], 
-                            "fornecedor_id": forns[f_s], 
-                            "descricao": d, 
-                            "valor": v, 
-                            "url_comprovante": url, 
-                            "status_pagamento": st_p,
-                            "lucro_estimado": obra_ref.get('lucro_estimado', 0),
-                            "impostos_estimados": obra_ref.get('impostos_estimados', 0)
-                        }
-                        supabase.table("lancamentos_obra").insert(dados_lanc).execute()
-                        limpar_campos(); st.rerun()
-                    except Exception as e: st.error(f"Erro: Verifique se as colunas existem na tabela lancamentos_obra.")
+            foto = st.camera_input("Foto do Comprovante", key=f"gp_{ver}")
+            
+            if st.button("REGISTRAR GASTO", use_container_width=True, type="primary"):
+                if obra_final and c_s and f_s and v > 0:
+                    url = None
+                    if foto:
+                        n_arq = f"{uuid.uuid4()}.jpg"
+                        supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
+                        url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
+                    
+                    dados = {
+                        "nome_obra": obra_final, "categoria_id": cats[c_s], "fornecedor_id": forns[f_s],
+                        "descricao": d, "valor": v, "url_comprovante": url, "status_pagamento": st_p,
+                        "orcamento_previsto": v_orc, "lucro_estimado": v_luc, "impostos_estimados": v_imp
+                    }
+                    supabase.table("lancamentos_obra").insert(dados).execute()
+                    limpar_campos(); st.rerun()
 
     elif pag == 'FORN':
         st.markdown("### Fornecedores")
@@ -266,18 +250,21 @@ else:
             res = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
             if res.data: df = res.data
         with st.container(border=True):
-            fn = st.text_input("Empresa*", value=df["nome_fornecedor"], key=f"fn_{ver}")
-            fr = st.text_input("Representante*", value=df["representante"], key=f"fr_{ver}")
+            fn = st.text_input("Nome da Empresa*", value=df["nome_fornecedor"], key=f"fn_{ver}")
+            fr = st.text_input("Representante", value=df["representante"], key=f"fr_{ver}")
             ft = st.text_input("Telefone", value=df["telefone"], key=f"ft_{ver}")
             fw = st.text_input("WhatsApp", value=df["whatsapp"], key=f"fw_{ver}")
             fc = st.text_input("CNPJ", value=df["cnpj"], key=f"fc_{ver}")
             fe = st.text_input("E-mail", value=df["email"], key=f"fe_{ver}")
-            fa = st.text_area("Endereço", value=df["endereco"], key=f"fa_{ver}")
-            if st.button("SALVAR FORNECEDOR", use_container_width=True):
+            fa = st.text_area("Endereço Completo", value=df["endereco"], key=f"fa_{ver}")
+            if st.button("SALVAR FORNECEDOR", use_container_width=True, type="primary"):
                 p = {"nome_fornecedor": fn, "representante": fr, "telefone": ft, "whatsapp": fw, "cnpj": fc, "email": fe, "endereco": fa}
                 if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
                 else: supabase.table("fornecedores").insert(p).execute()
                 limpar_campos(); st.rerun()
+        for f in (supabase.table("fornecedores").select("*").order("nome_fornecedor").execute().data or []):
+            with st.expander(f"🏢 {f['nome_fornecedor']}"):
+                if st.button("Editar", key=f"ef_{f['id']}"): st.session_state.forn_edit_id=f['id']; st.rerun()
 
     elif pag == 'CLIE':
         st.markdown("### Clientes")
@@ -286,71 +273,43 @@ else:
             res = supabase.table("clientes").select("*").eq("id", st.session_state.clie_edit_id).single().execute()
             if res.data: dc = res.data
         with st.container(border=True):
-            cn = st.text_input("Cliente*", value=dc["nome_cliente"], key=f"cn_{ver}")
-            cr = st.text_input("Contato", value=dc["representante"], key=f"cr_{ver}")
-            cc = st.text_input("CNPJ/CPF", value=dc["cnpj"], key=f"cc_{ver}")
+            cn = st.text_input("Nome do Cliente*", value=dc["nome_cliente"], key=f"cn_{ver}")
+            cr = st.text_input("Pessoa de Contato", value=dc["representante"], key=f"cr_{ver}")
+            ct = st.text_input("Telefone", value=dc["telefone"], key=f"ct_{ver}")
+            cw = st.text_input("WhatsApp", value=dc["whatsapp"], key=f"cw_{ver}")
+            cc = st.text_input("CPF/CNPJ", value=dc["cnpj"], key=f"cc_{ver}")
             ce = st.text_input("E-mail", value=dc["email"], key=f"ce_{ver}")
-            if st.button("SALVAR CLIENTE", use_container_width=True):
-                p = {"nome_cliente": cn, "representante": cr, "cnpj": cc, "email": ce}
+            ca = st.text_area("Endereço", value=dc["endereco"], key=f"ca_{ver}")
+            if st.button("SALVAR CLIENTE", use_container_width=True, type="primary"):
+                p = {"nome_cliente": cn, "representante": cr, "telefone": ct, "whatsapp": cw, "cnpj": cc, "email": ce, "endereco": ca}
                 if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
                 else: supabase.table("clientes").insert(p).execute()
                 limpar_campos(); st.rerun()
+        for c in (supabase.table("clientes").select("*").order("nome_cliente").execute().data or []):
+            with st.expander(f"👤 {c['nome_cliente']}"):
+                if st.button("Editar", key=f"ec_{c['id']}"): st.session_state.clie_edit_id=c['id']; st.rerun()
 
     elif pag == 'LISTA':
-        st.markdown("### Relatórios")
-        obs_dict_l = listar_obras()
-        if obs_dict_l:
-            o_f = st.selectbox("Selecione a Obra", [""] + list(obs_dict_l.keys()), index=0, key=f"lo_{ver}")
+        st.markdown("### Relatórios por Obra")
+        obras = listar_obras_unicas()
+        if obras:
+            o_f = st.selectbox("Selecione a Obra", [""] + obras, index=0, key=f"lo_{ver}")
             if o_f:
-                dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obs_dict_l[o_f]['id']).execute().data
+                dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("nome_obra", o_f).execute().data
                 if dados:
                     df_p = pd.DataFrame(dados)
-                    st.download_button("📥 Baixar PDF", gerar_pdf(df_p, o_f), f"{o_f}.pdf")
+                    st.download_button("📥 Gerar PDF", gerar_pdf(df_p, o_f), f"{o_f}.pdf")
                     for g in dados:
                         with st.expander(f"{g['descricao']} - {formatar_real(g['valor'])}"):
-                            if st.button("Remover Gasto", key=f"dg_{g['id']}"):
+                            if st.button("Excluir", key=f"dg_{g['id']}"):
                                 supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
 
-    elif pag == 'OBRA' and perf == 'ADMIN':
-        st.markdown("### Gestão de Obras")
-        do = {"nome_obra":"","cliente_id":"","tipo_obra":"","local_obra":"","orcamento_previsto":0.0,"lucro_estimado":0.0,"impostos_estimados":0.0}
-        if st.session_state.obra_edit_id:
-            res = supabase.table("obras").select("*").eq("id", st.session_state.obra_edit_id).single().execute()
-            if res.data: do = res.data
-        clis = listar_clientes()
-        with st.container(border=True):
-            on = st.text_input("Nome da Obra*", value=do["nome_obra"], key=f"on_{ver}")
-            oc = st.selectbox("Cliente*", [""] + list(clis.keys()), index=0, key=f"oc_{ver}")
-            ov = st.number_input("Orçamento Previsto (R$)", value=float(do["orcamento_previsto"]), key=f"ov_{ver}")
-            c_luc, c_imp = st.columns(2)
-            oluc = c_luc.number_input("Lucro Estimado (%)", value=float(do.get("lucro_estimado", 0)), key=f"oluc_{ver}")
-            oimp = c_imp.number_input("Imposto Estimado (%)", value=float(do.get("impostos_estimados", 0)), key=f"oimp_{ver}")
-            tipos = ["", "Residencial", "Comercial", "Reforma", "Industrial", "Outro"]
-            ot_idx = tipos.index(do["tipo_obra"]) if do["tipo_obra"] in tipos else 0
-            ot = st.selectbox("Tipo de Obra", tipos, index=ot_idx, key=f"ot_{ver}")
-            ol = st.text_input("Localização", value=do["local_obra"], key=f"ol_{ver}")
-            
-            if st.button("SALVAR OBRA", use_container_width=True, type="primary"):
-                if on and oc:
-                    p = {"nome_obra":on,"cliente_id":clis[oc],"tipo_obra":ot,"local_obra":ol,"orcamento_previsto":ov,"lucro_estimado":oluc,"impostos_estimados":oimp}
-                    try:
-                        if st.session_state.obra_edit_id: supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
-                        else: supabase.table("obras").insert(p).execute()
-                        limpar_campos(); st.rerun()
-                    except: st.error("Erro ao salvar. Verifique a tabela 'obras'.")
-
-        for ob in (supabase.table("obras").select("*").execute().data or []):
-            with st.expander(f"🏗️ {ob['nome_obra']}"):
-                if st.button("Editar Obra", key=f"eob_{ob['id']}"): 
-                    st.session_state.obra_edit_id=ob['id']
-                    st.rerun()
-
-    elif pag == 'USUARIOS' and perf == 'ADMIN':
-        st.markdown("### Equipe")
+    elif pag == 'USUARIOS' and st.session_state.user_perfil == 'ADMIN':
+        st.markdown("### Gestão de Acessos")
         with st.container(border=True):
             ne, ns = st.text_input("E-mail"), st.text_input("Senha", type="password")
             np = st.selectbox("Perfil", ["", "LANCADOR", "ADMIN"], index=0)
-            if st.button("CRIAR USUÁRIO"):
+            if st.button("CADASTRAR USUÁRIO"):
                 if ne and ns and np:
                     supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute(); st.rerun()
         st.table(pd.DataFrame(supabase.table("usuarios").select("email, perfil").execute().data))
