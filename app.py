@@ -232,22 +232,24 @@ else:
 
     elif pag == 'CLIE':
         st.markdown("### Clientes")
-        if st.session_state.clie_edit_id:
-            if st.button("➕ NOVO CLIENTE (LIMPAR CAMPOS)"): limpar_campos(); st.rerun()
-        
+        # Logica de Reset
+        if st.session_state.clie_edit_id and st.button("➕ NOVO CLIENTE (LIMPAR)"): limpar_campos(); st.rerun()
+
         dc = {"nome_cliente": "", "representante": "", "telefone": "", "whatsapp": "", "email": "", "cnpj": "", "endereco": ""}
         if st.session_state.clie_edit_id:
             res = supabase.table("clientes").select("*").eq("id", st.session_state.clie_edit_id).single().execute()
             if res.data: dc = res.data
         
+        # KEY DINÂMICA PARA FORÇAR ATUALIZAÇÃO DOS CAMPOS
+        k = f"{st.session_state.clie_edit_id}_{ver}"
         with st.container(border=True):
-            cn = st.text_input("Nome*", value=dc["nome_cliente"], key=f"cl_n_{ver}")
-            cr = st.text_input("Representante", value=dc["representante"], key=f"cl_r_{ver}")
-            ct = st.text_input("Telefone", value=dc["telefone"], key=f"cl_t_{ver}")
-            cz = st.text_input("WhatsApp*", value=dc["whatsapp"], key=f"cl_z_{ver}")
-            ce = st.text_input("E-mail*", value=dc["email"], key=f"cl_m_{ver}")
-            cc = st.text_input("CNPJ/CPF", value=dc["cnpj"], key=f"cl_c_{ver}")
-            cend = st.text_input("Endereço", value=dc["endereco"], key=f"cl_e_{ver}")
+            cn = st.text_input("Nome*", value=dc["nome_cliente"], key=f"cl_n_{k}")
+            cr = st.text_input("Representante", value=dc["representante"], key=f"cl_r_{k}")
+            ct = st.text_input("Telefone", value=dc["telefone"], key=f"cl_t_{k}")
+            cz = st.text_input("WhatsApp*", value=dc["whatsapp"], key=f"cl_z_{k}")
+            ce = st.text_input("E-mail*", value=dc["email"], key=f"cl_m_{k}")
+            cc = st.text_input("CNPJ/CPF", value=dc["cnpj"], key=f"cl_c_{k}")
+            cend = st.text_input("Endereço", value=dc["endereco"], key=f"cl_e_{k}")
             if st.button("SALVAR CLIENTE", use_container_width=True, type="primary"):
                 p = {"nome_cliente": cn, "representante": cr, "telefone": aplicar_mask_tel(ct), "whatsapp": aplicar_mask_tel(cz), "email": ce, "cnpj": aplicar_mask_cnpj(cc), "endereco": cend}
                 if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
@@ -257,27 +259,27 @@ else:
         for c in (supabase.table("clientes").select("*").order("nome_cliente").execute().data or []):
             with st.expander(f"👤 {c['nome_cliente']}"):
                 c1, c2 = st.columns(2)
-                if c1.button("Editar", key=f"e_cl_{c['id']}"): st.session_state.clie_edit_id = c['id']; st.rerun()
-                if c2.button("Excluir", key=f"d_cl_{c['id']}"): supabase.table("clientes").delete().eq("id", c['id']).execute(); st.rerun()
+                if c1.button("Editar", key=f"btn_e_cl_{c['id']}"): st.session_state.clie_edit_id = c['id']; st.rerun()
+                if c2.button("Excluir", key=f"btn_d_cl_{c['id']}"): supabase.table("clientes").delete().eq("id", c['id']).execute(); st.rerun()
 
     elif pag == 'FORN':
         st.markdown("### Fornecedores")
-        if st.session_state.forn_edit_id:
-            if st.button("➕ NOVO FORNECEDOR (LIMPAR CAMPOS)"): limpar_campos(); st.rerun()
+        if st.session_state.forn_edit_id and st.button("➕ NOVO FORNECEDOR (LIMPAR)"): limpar_campos(); st.rerun()
 
         df = {"nome_fornecedor": "", "representante": "", "telefone": "", "whatsapp": "", "email": "", "cnpj": "", "endereco": ""}
         if st.session_state.forn_edit_id:
             res = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
             if res.data: df = res.data
         
+        k = f"{st.session_state.forn_edit_id}_{ver}"
         with st.container(border=True):
-            fn = st.text_input("Empresa*", value=df["nome_fornecedor"], key=f"f_n_{ver}")
-            fr = st.text_input("Contato", value=df["representante"], key=f"f_r_{ver}")
-            ft = st.text_input("Telefone", value=df["telefone"], key=f"f_t_{ver}")
-            fz = st.text_input("WhatsApp*", value=df.get("whatsapp", ""), key=f"f_z_{ver}")
-            fe = st.text_input("E-mail*", value=df["email"], key=f"f_m_{ver}")
-            fc = st.text_input("CNPJ/CPF", value=df.get("cnpj", ""), key=f"f_c_{ver}")
-            fend = st.text_input("Endereço", value=df.get("endereco", ""), key=f"f_e_{ver}")
+            fn = st.text_input("Empresa*", value=df["nome_fornecedor"], key=f"f_n_{k}")
+            fr = st.text_input("Contato", value=df["representante"], key=f"f_r_{k}")
+            ft = st.text_input("Telefone", value=df["telefone"], key=f"f_t_{k}")
+            fz = st.text_input("WhatsApp*", value=df.get("whatsapp", ""), key=f"f_z_{k}")
+            fe = st.text_input("E-mail*", value=df["email"], key=f"f_m_{k}")
+            fc = st.text_input("CNPJ/CPF", value=df.get("cnpj", ""), key=f"f_c_{k}")
+            fend = st.text_input("Endereço", value=df.get("endereco", ""), key=f"f_e_{k}")
             if st.button("SALVAR FORNECEDOR", use_container_width=True, type="primary"):
                 p = {"nome_fornecedor": fn, "representante": fr, "telefone": aplicar_mask_tel(ft), "whatsapp": aplicar_mask_tel(fz), "email": fe, "cnpj": aplicar_mask_cnpj(fc), "endereco": fend}
                 if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
@@ -287,13 +289,12 @@ else:
         for f in (supabase.table("fornecedores").select("*").order("nome_fornecedor").execute().data or []):
             with st.expander(f"🤝 {f['nome_fornecedor']}"):
                 c1, c2 = st.columns(2)
-                if c1.button("Editar", key=f"e_f_{f['id']}"): st.session_state.forn_edit_id = f['id']; st.rerun()
-                if c2.button("Excluir", key=f"d_f_{f['id']}"): supabase.table("fornecedores").delete().eq("id", f['id']).execute(); st.rerun()
+                if c1.button("Editar", key=f"btn_e_f_{f['id']}"): st.session_state.forn_edit_id = f['id']; st.rerun()
+                if c2.button("Excluir", key=f"btn_d_f_{f['id']}"): supabase.table("fornecedores").delete().eq("id", f['id']).execute(); st.rerun()
 
     elif pag == 'OBRA' and perf == 'ADMIN':
         st.markdown("### Minhas Obras")
-        if st.session_state.obra_edit_id:
-            if st.button("➕ NOVA OBRA (LIMPAR CAMPOS)"): limpar_campos(); st.rerun()
+        if st.session_state.obra_edit_id and st.button("➕ NOVA OBRA (LIMPAR)"): limpar_campos(); st.rerun()
 
         do = {"nome_obra": "", "cliente_id": "", "orcamento_previsto": 0.0, "lucro_estimado": 0.0, "impostos_estimados": 0.0, "local_obra": ""}
         if st.session_state.obra_edit_id:
@@ -301,16 +302,17 @@ else:
             if res.data: do = res.data
         
         clis = listar_clientes()
+        k = f"{st.session_state.obra_edit_id}_{ver}"
         with st.container(border=True):
-            on = st.text_input("Nome da Obra*", value=do["nome_obra"], key=f"o_n_{ver}")
+            on = st.text_input("Nome da Obra*", value=do["nome_obra"], key=f"o_n_{k}")
             id_to_n = {v: k for k, v in clis.items()}
             idx = ([""] + list(clis.keys())).index(id_to_n.get(do["cliente_id"], "")) if do["cliente_id"] in id_to_n else 0
-            oc = st.selectbox("Vincular ao Cliente*", [""] + list(clis.keys()), index=idx, key=f"o_c_{ver}")
-            ol = st.text_input("Localização da Obra*", value=do.get("local_obra", ""), key=f"o_l_{ver}")
-            ov = st.number_input("Orçamento Previsto (R$)", value=float(do["orcamento_previsto"]), key=f"o_v_{ver}")
+            oc = st.selectbox("Vincular ao Cliente*", [""] + list(clis.keys()), index=idx, key=f"o_c_{k}")
+            ol = st.text_input("Localização da Obra*", value=do.get("local_obra", ""), key=f"o_l_{k}")
+            ov = st.number_input("Orçamento Previsto (R$)", value=float(do["orcamento_previsto"]), key=f"o_v_{k}")
             c_l, c_i = st.columns(2)
-            oluc = c_l.number_input("Lucro %", value=float(do.get("lucro_estimado", 0)), key=f"o_luc_{ver}")
-            oimp = c_i.number_input("Imposto %", value=float(do.get("impostos_estimados", 0)), key=f"o_imp_{ver}")
+            oluc = c_l.number_input("Lucro %", value=float(do.get("lucro_estimado", 0)), key=f"o_luc_{k}")
+            oimp = c_i.number_input("Imposto %", value=float(do.get("impostos_estimados", 0)), key=f"o_imp_{k}")
             if st.button("SALVAR OBRA", use_container_width=True, type="primary"):
                 if on and oc:
                     p = {"nome_obra": on, "cliente_id": clis[oc], "orcamento_previsto": ov, "lucro_estimado": oluc, "impostos_estimados": oimp, "local_obra": ol}
@@ -325,8 +327,8 @@ else:
             for ob in obs_lista:
                 with st.expander(f"🏗️ {ob['nome_obra']}"):
                     c1, c2 = st.columns(2)
-                    if c1.button("Editar", key=f"e_ob_{ob['id']}"): st.session_state.obra_edit_id = ob['id']; st.rerun()
-                    if c2.button("Excluir", key=f"d_ob_{ob['id']}"):
+                    if c1.button("Editar", key=f"btn_e_ob_{ob['id']}"): st.session_state.obra_edit_id = ob['id']; st.rerun()
+                    if c2.button("Excluir", key=f"btn_d_ob_{ob['id']}"):
                         supabase.table("lancamentos_obra").delete().eq("obra_id", ob['id']).execute()
                         supabase.table("obras").delete().eq("id", ob['id']).execute(); st.rerun()
 
