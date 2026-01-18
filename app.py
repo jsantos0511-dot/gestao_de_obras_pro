@@ -83,6 +83,8 @@ st.markdown(f"""
     .data-card {{ background: #F8F9FA; padding: 20px; border-radius: 8px; border: 1px solid #E9ECEF; margin-bottom: 15px; color: #1e1e1e; }}
     div.stButton > button[key="trigger"] {{ background-color: transparent !important; color: #FFFFFF !important; width: 45px !important; height: 45px !important; border: none !important; font-size: 30px !important; }}
     .nav-card button {{ width: 100% !important; height: 50px !important; font-weight: 600 !important; margin-bottom: 8px !important; }}
+    /* ESTILO DA LOGO ARREDONDADA */
+    .logo-container img {{ border-radius: 15px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3); }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -91,7 +93,9 @@ if not st.session_state.logado:
     st.markdown("<br><br>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 2, 1])
     with c2:
+        st.markdown('<div class="logo-container">', unsafe_allow_html=True)
         st.image(LOGO_URL, width=220)
+        st.markdown('</div>', unsafe_allow_html=True)
         with st.container(border=True):
             u_email = st.text_input("E-mail")
             u_senha = st.text_input("Senha", type="password")
@@ -108,7 +112,9 @@ with h1:
         st.session_state.menu_aberto = not st.session_state.menu_aberto
         st.rerun()
 with h2:
+    st.markdown('<div class="logo-container">', unsafe_allow_html=True)
     st.image(LOGO_URL, width=195)
+    st.markdown('</div>', unsafe_allow_html=True)
 st.markdown("---") 
 
 # --- 7. FUNÇÕES DE APOIO ---
@@ -177,7 +183,7 @@ else:
             o_sel = st.selectbox("Obra", [""] + list(obs.keys()), key=f"d_obr_{ver}")
             if o_sel:
                 inf = obs[o_sel]
-                oid = inf.get('id') or inf.get('eu ia')
+                oid = inf.get('id')
                 res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': oid}).execute()
                 gt = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
                 orc = float(inf.get('orcamento_previsto', 0))
@@ -288,7 +294,7 @@ else:
             foto = st.camera_input("Recibo", key=f"g_cam_{ver}")
             if st.button("SALVAR GASTO", use_container_width=True, type="primary"):
                 if c_sel and o_sel and cat_sel and forn_sel and val > 0:
-                    oid = obs[o_sel].get('id') or obs[o_sel].get('eu ia')
+                    oid = obs[o_sel].get('id')
                     url = None
                     if foto:
                         n_arq = f"{uuid.uuid4()}.jpg"
@@ -305,7 +311,7 @@ else:
             obs = listar_obras_por_cliente(clis[c_sel])
             o_f = st.selectbox("Obra", [""] + list(obs.keys()), key=f"l_o_{ver}")
             if o_f:
-                oid = obs[o_f].get('id') or obs[o_f].get('eu ia')
+                oid = obs[o_f].get('id')
                 d = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria), fornecedores(nome_fornecedor)").eq("obra_id", oid).order("created_at", desc=True).execute().data
                 if d:
                     df_d = pd.DataFrame(d)
