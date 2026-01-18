@@ -44,12 +44,10 @@ def realizar_login(email, senha):
         if res.data:
             user = res.data[0]
             st.session_state.logado = True
-            # LÓGICA DE CONTROLE: Se for o email da Tatiana, força o perfil restrito
-            if user['email'] == 'tatianasoares@yahoo.com':
-                st.session_state.user_perfil = 'LANCADOR_EXTERNO'
+            st.session_state.user_perfil = user['perfil']
+            if user['perfil'] == 'LANCADOR_EXTERNO':
                 st.session_state.pagina = 'GASTO'
             else:
-                st.session_state.user_perfil = user['perfil']
                 st.session_state.pagina = 'RESUMO'
             return True
     except: pass
@@ -86,8 +84,8 @@ st.markdown(f"""
     .data-card {{ background: #F8F9FA; padding: 20px; border-radius: 8px; border: 1px solid #E9ECEF; margin-bottom: 15px; color: #1e1e1e; }}
     div.stButton > button[key="trigger"] {{ background-color: transparent !important; color: #FFFFFF !important; width: 45px !important; height: 45px !important; border: none !important; font-size: 30px !important; }}
     .nav-card button {{ width: 100% !important; height: 50px !important; font-weight: 600 !important; margin-bottom: 8px !important; }}
-    /* LOGO QUADRADA FIXA */
-    .logo-container img {{ border-radius: 0px !important; }}
+    /* LOGO QUADRADA */
+    .logo-container img {{ border-radius: 0px !important; box-shadow: none !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -140,20 +138,25 @@ def listar_fornecedores():
 
 def gerar_pdf(df, nome_obra):
     pdf = FPDF()
-    pdf.add_page(); pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(190, 10, f"Relatorio ROSECON - {nome_obra}", ln=True, align="C"); pdf.ln(10)
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(190, 10, f"Relatorio ROSECON - {nome_obra}", ln=True, align="C")
+    pdf.ln(10)
     pdf.set_font("Helvetica", "B", 10)
     pdf.cell(25, 10, "Data", 1); pdf.cell(60, 10, "Descricao", 1); pdf.cell(45, 10, "Categoria", 1); pdf.cell(30, 10, "Valor", 1); pdf.cell(30, 10, "Status", 1); pdf.ln()
     pdf.set_font("Helvetica", "", 9)
     total = 0
     for _, row in df.iterrows():
         dt = row['created_at'][:10] if row.get('created_at') else "---"
-        pdf.cell(25, 10, dt, 1); pdf.cell(60, 10, str(row.get('descricao', ''))[:30], 1)
+        pdf.cell(25, 10, dt, 1)
+        pdf.cell(60, 10, str(row.get('descricao', ''))[:30], 1)
         cat = row['categorias_obra']['nome_categoria'] if isinstance(row.get('categorias_obra'), dict) else "N/A"
-        pdf.cell(45, 10, cat, 1); pdf.cell(30, 10, f"R$ {row.get('valor', 0):,.2f}", 1)
+        pdf.cell(45, 10, cat, 1)
+        pdf.cell(30, 10, f"R$ {row.get('valor', 0):,.2f}", 1)
         pdf.cell(30, 10, str(row.get('status_pagamento', 'N/A')), 1); pdf.ln()
         total += row.get('valor', 0)
-    pdf.ln(5); pdf.set_font("Helvetica", "B", 12)
+    pdf.ln(5)
+    pdf.set_font("Helvetica", "B", 12)
     pdf.cell(190, 10, f"TOTAL: {formatar_real(total)}", ln=True, align="R")
     return pdf.output(dest='S').encode('latin-1', 'replace')
 
@@ -202,7 +205,7 @@ else:
                 if res_s.data: st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
 
     elif pag == 'CLIE' and perf != 'LANCADOR_EXTERNO':
-        st.markdown("### Clientes")
+        st.markdown("### Gestão de Clientes")
         if st.session_state.clie_edit_id and st.button("➕ NOVO CLIENTE"): limpar_campos(); st.rerun()
         dc = {"nome_cliente":"", "representante":"", "telefone":"", "whatsapp":"", "email":"", "cnpj":"", "endereco":""}
         if st.session_state.clie_edit_id:
@@ -222,9 +225,14 @@ else:
                 if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
                 else: supabase.table("clientes").insert(p).execute()
                 limpar_campos(); st.rerun()
+        for c in (supabase.table("clientes").select("*").order("nome_cliente").execute().data or []):
+            with st.expander(f"👤 {c['nome_cliente']}"):
+                c1, c2 = st.columns(2)
+                if c1.button("Editar", key=f"be_c_{c['id']}"): st.session_state.clie_edit_id = c['id']; st.rerun()
+                if c2.button("Excluir", key=f"bd_c_{c['id']}"): supabase.table("clientes").delete().eq("id", c['id']).execute(); st.rerun()
 
     elif pag == 'FORN' and perf != 'LANCADOR_EXTERNO':
-        st.markdown("### Fornecedores")
+        st.markdown("### Gestão de Fornecedores")
         if st.session_state.forn_edit_id and st.button("➕ NOVO FORNECEDOR"): limpar_campos(); st.rerun()
         df = {"nome_fornecedor":"", "representante":"", "telefone":"", "whatsapp":"", "email":"", "cnpj":"", "endereco":""}
         if st.session_state.forn_edit_id:
@@ -244,9 +252,14 @@ else:
                 if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
                 else: supabase.table("fornecedores").insert(p).execute()
                 limpar_campos(); st.rerun()
+        for f in (supabase.table("fornecedores").select("*").order("nome_fornecedor").execute().data or []):
+            with st.expander(f"🤝 {f['nome_fornecedor']}"):
+                c1, c2 = st.columns(2)
+                if c1.button("Editar", key=f"be_f_{f['id']}"): st.session_state.forn_edit_id = f['id']; st.rerun()
+                if c2.button("Excluir", key=f"bd_f_{f['id']}"): supabase.table("fornecedores").delete().eq("id", f['id']).execute(); st.rerun()
 
     elif pag == 'OBRA' and perf == 'ADMIN':
-        st.markdown("### Minhas Obras")
+        st.markdown("### Gestão de Obras")
         if st.session_state.obra_edit_id and st.button("➕ NOVA OBRA"): limpar_campos(); st.rerun()
         do = {"nome_obra":"", "cliente_id":"", "orcamento_previsto":0.0, "lucro_estimado":0.0, "impostos_estimados":0.0, "local_obra":""}
         if st.session_state.obra_edit_id:
@@ -297,7 +310,7 @@ else:
                     st.success("Salvo!"); limpar_campos(); st.rerun()
 
     elif pag == 'LISTA' and perf != 'LANCADOR_EXTERNO':
-        st.markdown("### Relatórios")
+        st.markdown("### Relatórios de Gastos")
         clis = listar_clientes()
         c_sel = st.selectbox("Cliente", [""] + list(clis.keys()), key=f"l_c_{ver}")
         if c_sel:
@@ -309,34 +322,31 @@ else:
                 if d:
                     df_d = pd.DataFrame(d)
                     c1, c2 = st.columns(2)
-                    c1.download_button("📥 PDF", gerar_pdf(df_d, o_f), f"{o_f}.pdf", use_container_width=True)
+                    c1.download_button("📥 Exportar PDF", gerar_pdf(df_d, o_f), f"{o_f}.pdf", use_container_width=True)
                     try:
                         import xlsxwriter
                         output = io.BytesIO()
                         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                             df_d.to_excel(writer, index=False)
-                        c2.download_button("📊 XLS", output.getvalue(), f"{o_f}.xlsx", use_container_width=True)
+                        c2.download_button("📊 Exportar Excel", output.getvalue(), f"{o_f}.xlsx", use_container_width=True)
                     except: pass
-
                     for g in d:
                         cor = "🟢" if g.get('status_pagamento') == "Pago" else "🔴"
                         with st.expander(f"{cor} {g['descricao']} | {formatar_real(g['valor'])}"):
                             if g.get('url_comprovante'): st.image(g['url_comprovante'])
-                            if st.button("Excluir Gasto", key=f"dg_{g['id']}"):
+                            if st.button("Excluir Lançamento", key=f"dg_{g['id']}"):
                                 supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
 
     elif pag == 'USUARIOS' and perf == 'ADMIN':
         st.markdown("### Gestão de Equipe")
         with st.container(border=True):
-            ne, ns = st.text_input("E-mail"), st.text_input("Senha", type="password")
-            # Forçamos o envio de 'LANCADOR' para passar na trava do banco
-            np = st.selectbox("Tipo de Acesso", ["ADMIN", "LANCADOR"])
-            if st.button("CRIAR USUÁRIO"):
+            ne, ns = st.text_input("Novo E-mail"), st.text_input("Nova Senha", type="password")
+            np = st.selectbox("Perfil de Acesso", ["ADMIN", "LANCADOR", "LANCADOR_EXTERNO"])
+            if st.button("CADASTRAR MEMBRO"):
                 if ne and ns:
                     try:
                         supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
-                        st.success("Usuário criado!")
-                        st.rerun()
-                    except Exception as e: st.error(f"Erro: {str(e)}")
+                        st.success("Membro adicionado!"); st.rerun()
+                    except Exception as e: st.error(f"Erro ao salvar: {str(e)}")
         u_list = supabase.table("usuarios").select("id, email, perfil").execute().data
         if u_list: st.table(pd.DataFrame(u_list))
