@@ -6,6 +6,7 @@ import uuid
 import re
 from datetime import datetime
 from fpdf import FPDF
+import io
 
 # --- CONFIGURAÇÃO DA MARCA ---
 LOGO_URL = "https://ryzcivhjohgtzixqflwo.supabase.co/storage/v1/object/public/comprovantes/logo_rosecon.png" 
@@ -29,6 +30,7 @@ if 'pagina' not in st.session_state: st.session_state.pagina = 'RESUMO'
 if 'menu_aberto' not in st.session_state: st.session_state.menu_aberto = False
 if 'form_version' not in st.session_state: st.session_state.form_version = 0
 
+# Controles de Edição
 if 'forn_edit_id' not in st.session_state: st.session_state.forn_edit_id = None
 if 'clie_edit_id' not in st.session_state: st.session_state.clie_edit_id = None
 if 'obra_edit_id' not in st.session_state: st.session_state.obra_edit_id = None
@@ -63,32 +65,27 @@ def aplicar_mask_tel(tel):
     elif len(num) == 10: return f"({num[:2]}) {num[2:6]}-{num[6:]}"
     return tel
 
-# --- 4. ESTILO VISUAL CORRIGIDO (SEM LOGO ARREDONDADA E SEM EMBARALHAMENTO) ---
+def formatar_real(valor):
+    return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
+
+# --- 4. ESTILO VISUAL ---
 st.markdown(f"""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {{display: none;}}
     .block-container {{ padding-top: 2rem !important; }}
-    
-    /* Logo Reta */
     img {{ border-radius: 0px !important; }}
     .stImage > img {{ border-radius: 0px !important; display: block; margin: 0 auto; }}
-    
-    /* Títulos e Cards */
     .main-title {{ color: #FFFFFF !important; font-size: 1.4rem; font-weight: 700; margin-bottom: 15px; }}
-    
     .metric-container {{
         background: #1E1E1E; padding: 15px; border-radius: 10px; 
         border: 1px solid #333; margin-bottom: 10px; text-align: center;
     }}
     .metric-label {{ color: #AAAAAA; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; }}
     .metric-value {{ color: #FFFFFF; font-size: 1.5rem; font-weight: 800; }}
-    
     .data-card {{ 
         background: #F8F9FA; padding: 20px; border-radius: 8px; 
         border: 1px solid #E9ECEF; margin-bottom: 15px; color: #1e1e1e; 
     }}
-    
-    /* Botões */
     div.stButton > button[key="trigger"] {{
         background-color: transparent !important; color: #FFFFFF !important;
         width: 45px !important; height: 45px !important; border: none !important; font-size: 30px !important;
@@ -122,10 +119,7 @@ with h2:
     st.image(LOGO_URL, width=195)
 st.markdown("---") 
 
-# --- 7. APOIO ---
-def formatar_real(valor):
-    return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
-
+# --- 7. FUNÇÕES DE APOIO ---
 def listar_obras():
     res = supabase.table("obras").select("id, nome_obra, orcamento_previsto").execute()
     return {item['nome_obra']: {"id": item['id'], "orcamento": item['orcamento_previsto']} for item in res.data}
@@ -149,23 +143,40 @@ def gerar_pdf(df, nome_obra):
     pdf.cell(190, 10, f"Relatorio ROSECON - {nome_obra}", ln=True, align="C")
     pdf.ln(10)
     pdf.set_font("Helvetica", "B", 10)
-    pdf.cell(25, 10, "Data", 1); pdf.cell(75, 10, "Descricao", 1); pdf.cell(55, 10, "Categoria", 1); pdf.cell(35, 10, "Valor", 1); pdf.ln()
+    pdf.cell(25, 10, "Data", 1); pdf.cell(60, 10, "Descricao", 1); pdf.cell(45, 10, "Categoria", 1); pdf.cell(30, 10, "Valor", 1); pdf.cell(30, 10, "Status", 1); pdf.ln()
     pdf.set_font("Helvetica", "", 9)
     total = 0
     for _, row in df.iterrows():
         dt = datetime.strptime(row['created_at'][:10], '%Y-%m-%d').strftime('%d/%m/%Y')
-        pdf.cell(25, 10, dt, 1); pdf.cell(75, 10, str(row['descricao'])[:40], 1)
-        pdf.cell(55, 10, str(row['categorias_obra']['nome_categoria']), 1); pdf.cell(35, 10, f"R$ {row['valor']:,.2f}", 1); pdf.ln()
+        pdf.cell(25, 10, dt, 1); pdf.cell(60, 10, str(row['descricao'])[:30], 1)
+        pdf.cell(45, 10, str(row['categorias_obra']['nome_categoria']), 1); pdf.cell(30, 10, f"R$ {row['valor']:,.2f}", 1)
+        pdf.cell(30, 10, str(row.get('status_pagamento', 'N/A')), 1); pdf.ln()
         total += row['valor']
     pdf.ln(5); pdf.set_font("Helvetica", "B", 12)
     pdf.cell(190, 10, f"TOTAL: {formatar_real(total)}", ln=True, align="R")
     return pdf.output(dest='S').encode('latin-1', 'replace')
 
+def gerar_excel(df):
+    output = io.BytesIO()
+    # Limpeza para o Excel
+    df_excel = df.copy()
+    if 'categorias_obra' in df_excel.columns:
+        df_excel['Categoria'] = df_excel['categorias_obra'].apply(lambda x: x['nome_categoria'] if isinstance(x, dict) else '')
+    if 'fornecedores' in df_excel.columns:
+        df_excel['Fornecedor'] = df_excel['fornecedores'].apply(lambda x: x['nome_fornecedor'] if isinstance(x, dict) else '')
+    
+    colunas_uteis = ['created_at', 'descricao', 'Categoria', 'Fornecedor', 'valor', 'status_pagamento']
+    df_final = df_excel[[c for c in colunas_uteis if c in df_excel.columns]]
+    
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df_final.to_excel(writer, index=False, sheet_name='Lancamentos')
+    return output.getvalue()
+
 def excluir_em_cascata_cliente(cliente_id):
     try:
         obras = supabase.table("obras").select("id").eq("cliente_id", cliente_id).execute().data
         for o in obras:
-            gastos = supabase.table("lancamentos_obra").select("id, url_comprovante").eq("obra_id", o['id']).execute().data
+            gastos = supabase.table("lancamentos_obra").select("id, url_comprovante").eq("id_obra", o['id']).execute().data
             for g in gastos:
                 if g.get('url_comprovante'):
                     try: supabase.storage.from_("comprovantes").remove([g['url_comprovante'].split('/')[-1]])
@@ -226,6 +237,7 @@ else:
             f_sel = st.selectbox("Fornecedor*", [""] + list(forns.keys()), index=0, key=f"gf_{ver}")
             d = st.text_input("Descrição", key=f"gd_{ver}")
             v = st.number_input("Valor", min_value=0.0, key=f"gv_{ver}")
+            status_p = st.selectbox("Status de Pagamento", ["Pago", "Pendente"], key=f"gs_{ver}")
             foto = st.camera_input("Recibo", key=f"gp_{ver}")
             if st.button("SALVAR GASTO", use_container_width=True, type="primary"):
                 if o_sel and c and f_sel and v > 0:
@@ -234,7 +246,15 @@ else:
                         n_arq = f"{uuid.uuid4()}.jpg"
                         supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
                         url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
-                    supabase.table("lancamentos_obra").insert({"obra_id": obs[o_sel]['id'], "categoria_id": cats[c], "fornecedor_id": forns[f_sel], "descricao": d, "valor": v, "url_comprovante": url}).execute()
+                    supabase.table("lancamentos_obra").insert({
+                        "obra_id": obs[o_sel]['id'], 
+                        "categoria_id": cats[c], 
+                        "fornecedor_id": forns[f_sel], 
+                        "descricao": d, 
+                        "valor": v, 
+                        "url_comprovante": url,
+                        "status_pagamento": status_p
+                    }).execute()
                     limpar_campos(); st.rerun()
 
     elif pag == 'FORN':
@@ -289,21 +309,37 @@ else:
 
     elif pag == 'LISTA':
         st.markdown("### Histórico")
-        obs_l = listar_obras()
+        obs_l, cats_l, forns_l = listar_obras(), listar_categorias(), listar_fornecedores()
         if obs_l:
-            o_f = st.selectbox("Obra:", [""] + list(obs_l.keys()), index=0, key=f"lo_{ver}")
+            with st.container(border=True):
+                o_f = st.selectbox("Filtrar por Obra:", [""] + list(obs_l.keys()), index=0, key=f"lo_{ver}")
+                col_f1, col_f2 = st.columns(2)
+                cat_f = col_f1.selectbox("Categoria:", ["Todas"] + list(cats_l.keys()), key=f"lf_cat_{ver}")
+                stat_f = col_f2.selectbox("Status:", ["Todos", "Pago", "Pendente"], key=f"lf_stat_{ver}")
+                d_i, d_f = st.date_input("Período:", [datetime.now().replace(day=1), datetime.now()])
+            
             if o_f:
-                c1, c2 = st.columns(2)
-                d_i, d_f = c1.date_input("De:", datetime.now().replace(day=1)), c2.date_input("Até:", datetime.now())
-                dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obs_l[o_f]['id']).gte("created_at", d_i).lte("created_at", f"{d_f} 23:59:59").order("created_at", desc=True).execute().data
+                query = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria), fornecedores(nome_fornecedor)").eq("obra_id", obs_l[o_f]['id']).gte("created_at", d_i).lte("created_at", f"{d_f} 23:59:59")
+                if cat_f != "Todas": query = query.eq("categoria_id", cats_l[cat_f])
+                if stat_f != "Todos": query = query.eq("status_pagamento", stat_f)
+                
+                dados = query.order("created_at", desc=True).execute().data
+                
                 if dados:
                     if perf == 'ADMIN':
+                        c_down1, c_down2 = st.columns(2)
                         pdf_b = gerar_pdf(pd.DataFrame(dados), o_f)
-                        st.download_button("📥 PDF", pdf_b, f"Relatorio_{o_f}.pdf", "application/pdf", use_container_width=True)
+                        c_down1.download_button("📥 Baixar PDF", pdf_b, f"Relatorio_{o_f}.pdf", "application/pdf", use_container_width=True)
+                        xls_b = gerar_excel(pd.DataFrame(dados))
+                        c_down2.download_button("📊 Baixar Excel", xls_b, f"Relatorio_{o_f}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                    
                     for g in dados:
-                        with st.expander(f"{g['descricao']} | {formatar_real(g['valor'])}"):
+                        cor_status = "🟢" if g.get('status_pagamento') == "Pago" else "🔴"
+                        with st.expander(f"{cor_status} {g['descricao']} | {formatar_real(g['valor'])}"):
+                            st.write(f"**Fornecedor:** {g['fornecedores']['nome_fornecedor'] if g.get('fornecedores') else 'N/A'}")
+                            st.write(f"**Status:** {g.get('status_pagamento', 'N/A')}")
                             if g.get('url_comprovante'): st.image(g['url_comprovante'])
-                            if st.button("🗑️", key=f"dg_{g['id']}", use_container_width=True):
+                            if st.button("🗑️ Excluir", key=f"dg_{g['id']}", use_container_width=True):
                                 if g.get('url_comprovante'):
                                     try: supabase.storage.from_("comprovantes").remove([g['url_comprovante'].split('/')[-1]])
                                     except: pass
