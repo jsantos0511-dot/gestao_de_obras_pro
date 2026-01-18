@@ -213,19 +213,19 @@ else:
                 gasto_total = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
                 orcado = float(obra_info['orcamento_previsto']) if obra_info['orcamento_previsto'] else 0
                 
+                # Ajuste preventivo para não quebrar se as colunas não existirem
                 perc_lucro = float(obra_info.get('lucro_estimado', 0)) if obra_info.get('lucro_estimado') else 0
                 perc_imposto = float(obra_info.get('impostos_estimados', 0)) if obra_info.get('impostos_estimados') else 0
                 
                 valor_lucro_previsto = orcado * (perc_lucro / 100)
                 valor_imposto = orcado * (perc_imposto / 100)
-                
                 lucro_real = orcado - gasto_total - valor_imposto
                 
                 st.markdown('<p class="main-title">Saúde Financeira</p>', unsafe_allow_html=True)
                 c1, c2, c3, c4 = st.columns(4)
                 with c1: st.markdown(f'<div class="metric-container"><p class="metric-label">Orçado</p><p class="metric-value">{formatar_real(orcado)}</p></div>', unsafe_allow_html=True)
                 with c2: st.markdown(f'<div class="metric-container"><p class="metric-label">Exp. Lucro</p><p class="metric-value">{formatar_real(valor_lucro_previsto)}</p></div>', unsafe_allow_html=True)
-                with c3: st.markdown(f'<div class="metric-container"><p class="metric-label">Imposto ({perc_imposto}%)</p><p class="metric-value">{formatar_real(valor_imposto)}</p></div>', unsafe_allow_html=True)
+                with c3: st.markdown(f'<div class="metric-container"><p class="metric-label">Imposto</p><p class="metric-value">{formatar_real(valor_imposto)}</p></div>', unsafe_allow_html=True)
                 with c4: st.markdown(f'<div class="metric-container"><p class="metric-label">Lucro Real</p><p class="metric-value" style="color:{"#00FF00" if lucro_real > 0 else "#FF0000"}">{formatar_real(lucro_real)}</p></div>', unsafe_allow_html=True)
                 
                 st.markdown(f'<div class="data-card"><small>Gasto Acumulado (Realizado)</small><h3>{formatar_real(gasto_total)}</h3></div>', unsafe_allow_html=True)
@@ -248,13 +248,16 @@ else:
             foto = st.camera_input("Recibo", key=f"gp_{ver}")
             if st.button("SALVAR GASTO", use_container_width=True, type="primary"):
                 if o_sel and c and f_sel and v > 0:
-                    url = None
-                    if foto:
-                        n_arq = f"{uuid.uuid4()}.jpg"
-                        supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
-                        url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
-                    supabase.table("lancamentos_obra").insert({"obra_id": obs_dict[o_sel]['id'], "categoria_id": cats[c], "fornecedor_id": forns[f_sel], "descricao": d, "valor": v, "url_comprovante": url, "status_pagamento": status_p}).execute()
-                    limpar_campos(); st.rerun()
+                    try:
+                        url = None
+                        if foto:
+                            n_arq = f"{uuid.uuid4()}.jpg"
+                            supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
+                            url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
+                        supabase.table("lancamentos_obra").insert({"obra_id": obs_dict[o_sel]['id'], "categoria_id": cats[c], "fornecedor_id": forns[f_sel], "descricao": d, "valor": v, "url_comprovante": url, "status_pagamento": status_p}).execute()
+                        limpar_campos(); st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar gasto: {e}")
 
     elif pag == 'FORN':
         st.markdown("### Fornecedores")
@@ -340,7 +343,7 @@ else:
 
     elif pag == 'OBRA' and perf == 'ADMIN':
         st.markdown("### Cadastro de Obras")
-        do = {"nome_obra": "", "cliente_id": "", "tipo_obra": "", "local_obra": "", "orcamento_previsto": 0.0, "lucro_estimado": 0.0, "impostos_estimados": 0.0}
+        do = {"nome_obra": "", "cliente_id": "", "tipo_obra": "", "local_obra": "", "orcamento_previsto": 0.0}
         if st.session_state.obra_edit_id:
             res = supabase.table("obras").select("*").eq("id", st.session_state.obra_edit_id).single().execute()
             if res.data: do = res.data
@@ -350,42 +353,37 @@ else:
             cl_idx = ([""] + list(clis.keys())).index(id_to_name.get(do["cliente_id"], "")) if do["cliente_id"] in id_to_name else 0
             oc = st.selectbox("Cliente*", [""] + list(clis.keys()), index=cl_idx, key=f"oc_{ver}")
             ov = st.number_input("Orçamento Previsto (R$)", min_value=0.0, value=float(do["orcamento_previsto"]), key=f"ov_{ver}")
-            c_luc, c_imp = st.columns(2)
-            olucro = c_luc.number_input("Lucro (%)", min_value=0.0, max_value=100.0, value=float(do.get("lucro_estimado", 0)), key=f"olucro_{ver}")
-            oimposto = c_imp.number_input("Imposto (%)", min_value=0.0, max_value=100.0, value=float(do.get("impostos_estimados", 0)), key=f"oimposto_{ver}")
-            ot_lista = ["", "Residencial", "Comercial", "Reforma", "Industrial", "Outro"]
-            ot_idx = ot_lista.index(do["tipo_obra"]) if do["tipo_obra"] in ot_lista else 0
-            ot = st.selectbox("Tipo*", ot_lista, index=ot_idx, key=f"ot_{ver}")
-            ol = st.text_input("Localização", value=do["local_obra"], key=f"ol_{ver}")
             
-            # --- CORREÇÃO APLICADA AQUI ---
+            ot_lista = ["", "Residencial", "Comercial", "Reforma", "Industrial", "Outro"]
+            ot_idx = ot_lista.index(do.get("tipo_obra", "")) if do.get("tipo_obra") in ot_lista else 0
+            ot = st.selectbox("Tipo*", ot_lista, index=ot_idx, key=f"ot_{ver}")
+            ol = st.text_input("Localização", value=do.get("local_obra", ""), key=f"ol_{ver}")
+            
             if st.button("SALVAR OBRA", type="primary", use_container_width=True):
                 try:
                     id_cliente = clis.get(oc)
-                    if not on or not id_cliente:
-                        st.error("Preencha o Nome e selecione um Cliente.")
-                    else:
+                    if on and id_cliente:
+                        # Removidas colunas lucro_estimado e impostos_estimados para evitar erro de banco
                         p = {
                             "nome_obra": on,
                             "cliente_id": id_cliente,
                             "tipo_obra": ot,
                             "local_obra": ol,
-                            "orcamento_previsto": float(ov),
-                            "lucro_estimado": float(olucro),
-                            "impostos_estimados": float(oimposto)
+                            "orcamento_previsto": float(ov)
                         }
                         if st.session_state.obra_edit_id:
                             supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
                         else:
                             supabase.table("obras").insert(p).execute()
                         limpar_campos(); st.rerun()
+                    else:
+                        st.warning("Preencha os campos obrigatórios (*)")
                 except Exception as e:
                     st.error(f"Erro no Banco de Dados: {str(e)}")
-            # ------------------------------
 
         for ob in (supabase.table("obras").select("*, clientes(nome_cliente)").order("created_at", desc=True).execute().data or []):
             with st.expander(f"🏗️ {ob['nome_obra']}"):
-                st.write(f"**Orçamento:** {formatar_real(ob['orcamento_previsto'])} | **Lucro:** {ob.get('lucro_estimado')}%")
+                st.write(f"**Orçamento:** {formatar_real(ob['orcamento_previsto'])}")
                 b1, b2 = st.columns(2)
                 if b1.button("📝", key=f"eob_{ob['id']}"): st.session_state.obra_edit_id=ob['id']; st.rerun()
                 if b2.button("🗑️", key=f"dob_{ob['id']}"):
