@@ -124,8 +124,7 @@ def listar_obras():
     try:
         res = supabase.table("obras").select("*").execute()
         return {str(item['nome_obra']): item for item in res.data}
-    except:
-        return {}
+    except: return {}
 
 def listar_categorias():
     try:
@@ -182,16 +181,10 @@ def excluir_em_cascata_cliente(cliente_id):
     try:
         obras = supabase.table("obras").select("id").eq("cliente_id", cliente_id).execute().data
         for o in obras:
-            gastos = supabase.table("lancamentos_obra").select("id, url_comprovante").eq("obra_id", o['id']).execute().data
-            for g in gastos:
-                if g.get('url_comprovante'):
-                    try: supabase.storage.from_("comprovantes").remove([g['url_comprovante'].split('/')[-1]])
-                    except: pass
             supabase.table("lancamentos_obra").delete().eq("obra_id", o['id']).execute()
         supabase.table("obras").delete().eq("cliente_id", cliente_id).execute()
         supabase.table("clientes").delete().eq("id", cliente_id).execute()
-    except:
-        st.error("Erro ao excluir. Verifique a tabela 'obras'.")
+    except: pass
 
 # --- 8. MENU ---
 if st.session_state.menu_aberto:
@@ -213,161 +206,145 @@ else:
     pag, perf, ver = st.session_state.pagina, st.session_state.user_perfil, st.session_state.form_version
 
     if pag == 'RESUMO':
-        obras_dict = listar_obras()
-        if not obras_dict:
-            st.warning("⚠️ Nenhuma obra cadastrada. Por favor, crie a tabela 'obras' no Supabase e cadastre uma obra.")
+        obs_dict = listar_obras()
+        if not obs_dict: st.info("Cadastre uma obra em 'Minhas Obras'.")
         else:
-            sel = st.selectbox("Selecione a Obra", [""] + list(obras_dict.keys()), index=0, key=f"sel_res_v{ver}")
+            sel = st.selectbox("Obra", [""] + list(obs_dict.keys()), key=f"s_res_{ver}")
             if sel:
-                obra_info = obras_dict[sel]
-                res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': obra_info['id']}).execute()
-                gasto_total = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
-                orcado = float(obra_info.get('orcamento_previsto', 0))
+                o = obs_dict[sel]
+                res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': o['id']}).execute()
+                gasto = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
+                orc, luc, imp = float(o.get('orcamento_previsto',0)), float(o.get('lucro_estimado',0)), float(o.get('impostos_estimados',0))
+                v_imp = orc * (imp/100)
+                l_real = orc - gasto - v_imp
                 
-                perc_lucro = float(obra_info.get('lucro_estimado', 0))
-                perc_imposto = float(obra_info.get('impostos_estimados', 0))
-                
-                valor_lucro_previsto = orcado * (perc_lucro / 100)
-                valor_imposto = orcado * (perc_imposto / 100)
-                lucro_real = orcado - gasto_total - valor_imposto
-                
-                st.markdown('<p class="main-title">Saúde Financeira</p>', unsafe_allow_html=True)
-                c1, c2, c3, c4 = st.columns(4)
-                with c1: st.markdown(f'<div class="metric-container"><p class="metric-label">Orçado</p><p class="metric-value">{formatar_real(orcado)}</p></div>', unsafe_allow_html=True)
-                with c2: st.markdown(f'<div class="metric-container"><p class="metric-label">Exp. Lucro</p><p class="metric-value">{formatar_real(valor_lucro_previsto)}</p></div>', unsafe_allow_html=True)
-                with c3: st.markdown(f'<div class="metric-container"><p class="metric-label">Imposto ({perc_imposto}%)</p><p class="metric-value">{formatar_real(valor_imposto)}</p></div>', unsafe_allow_html=True)
-                with c4: st.markdown(f'<div class="metric-container"><p class="metric-label">Lucro Real</p><p class="metric-value" style="color:{"#00FF00" if lucro_real > 0 else "#FF0000"}">{formatar_real(lucro_real)}</p></div>', unsafe_allow_html=True)
-                
-                st.markdown(f'<div class="data-card"><small>Gasto Acumulado (Realizado)</small><h3>{formatar_real(gasto_total)}</h3></div>', unsafe_allow_html=True)
-                if orcado > 0:
-                    st.progress(min(gasto_total / orcado, 1.0))
+                c1,c2,c3,c4 = st.columns(4)
+                c1.markdown(f'<div class="metric-container"><p class="metric-label">Orçado</p><p class="metric-value">{formatar_real(orc)}</p></div>', unsafe_allow_html=True)
+                c2.markdown(f'<div class="metric-container"><p class="metric-label">Exp. Lucro</p><p class="metric-value">{formatar_real(orc*(luc/100))}</p></div>', unsafe_allow_html=True)
+                c3.markdown(f'<div class="metric-container"><p class="metric-label">Imposto</p><p class="metric-value">{formatar_real(v_imp)}</p></div>', unsafe_allow_html=True)
+                c4.markdown(f'<div class="metric-container"><p class="metric-label">Lucro Real</p><p class="metric-value">{formatar_real(l_real)}</p></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="data-card"><h3>Gasto: {formatar_real(gasto)}</h3></div>', unsafe_allow_html=True)
                 if res_s.data: st.bar_chart(pd.DataFrame(res_s.data).set_index('nome_categoria'))
 
     elif pag == 'GASTO':
         st.markdown("### Lançamento")
-        obs_dict = listar_obras()
-        cats, forns = listar_categorias(), listar_fornecedores()
+        obs_dict, cats, forns = listar_obras(), listar_categorias(), listar_fornecedores()
         with st.container(border=True):
-            o_sel = st.selectbox("Obra*", [""] + list(obs_dict.keys()), index=0, key=f"go_{ver}")
-            c = st.selectbox("Categoria*", [""] + list(cats.keys()), index=0, key=f"gc_{ver}")
-            f_sel = st.selectbox("Fornecedor*", [""] + list(forns.keys()), index=0, key=f"gf_{ver}")
+            o_s = st.selectbox("Obra*", [""] + list(obs_dict.keys()), key=f"go_{ver}")
+            c_s = st.selectbox("Categoria*", [""] + list(cats.keys()), key=f"gc_{ver}")
+            f_s = st.selectbox("Fornecedor*", [""] + list(forns.keys()), key=f"gf_{ver}")
             d = st.text_input("Descrição", key=f"gd_{ver}")
             v = st.number_input("Valor", min_value=0.0, key=f"gv_{ver}")
-            status_p = st.selectbox("Status de Pagamento", ["Pago", "Pendente"], key=f"gs_{ver}")
+            st_p = st.selectbox("Status", ["Pago", "Pendente"], key=f"gs_{ver}")
             foto = st.camera_input("Recibo", key=f"gp_{ver}")
-            if st.button("SALVAR GASTO", use_container_width=True, type="primary"):
-                if o_sel and c and f_sel and v > 0:
-                    try:
-                        url = None
-                        if foto:
-                            n_arq = f"{uuid.uuid4()}.jpg"
-                            supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
-                            url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
-                        supabase.table("lancamentos_obra").insert({"obra_id": obs_dict[o_sel]['id'], "categoria_id": cats[c], "fornecedor_id": forns[f_sel], "descricao": d, "valor": v, "url_comprovante": url, "status_pagamento": status_p}).execute()
-                        limpar_campos(); st.rerun()
-                    except: st.error("Erro ao salvar. Verifique se a tabela 'lancamentos_obra' existe.")
+            if st.button("SALVAR", use_container_width=True, type="primary"):
+                if o_s and c_s and f_s and v > 0:
+                    url = None
+                    if foto:
+                        n_arq = f"{uuid.uuid4()}.jpg"
+                        supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
+                        url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
+                    supabase.table("lancamentos_obra").insert({"obra_id": obs_dict[o_s]['id'], "categoria_id": cats[c_s], "fornecedor_id": forns[f_s], "descricao": d, "valor": v, "url_comprovante": url, "status_pagamento": st_p}).execute()
+                    limpar_campos(); st.rerun()
 
     elif pag == 'FORN':
         st.markdown("### Fornecedores")
         df = {"nome_fornecedor": "", "representante": "", "telefone": "", "whatsapp": "", "cnpj": "", "email": "", "endereco": ""}
         if st.session_state.forn_edit_id:
-            try:
-                res = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
-                if res.data: df = res.data
-            except: pass
+            res = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
+            if res.data: df = res.data
         with st.container(border=True):
             fn = st.text_input("Empresa*", value=df["nome_fornecedor"], key=f"fn_{ver}")
             fr = st.text_input("Representante*", value=df["representante"], key=f"fr_{ver}")
-            ft = st.text_input("Telefone*", value=df["telefone"], key=f"ft_{ver}")
+            ft = st.text_input("Telefone", value=df["telefone"], key=f"ft_{ver}")
             fw = st.text_input("WhatsApp", value=df["whatsapp"], key=f"fw_{ver}")
             fc = st.text_input("CNPJ", value=df["cnpj"], key=f"fc_{ver}")
             fe = st.text_input("E-mail", value=df["email"], key=f"fe_{ver}")
             fa = st.text_area("Endereço", value=df["endereco"], key=f"fa_{ver}")
-            if st.button("SALVAR", use_container_width=True, type="primary"):
-                p = {"nome_fornecedor": fn, "representante": fr, "telefone": aplicar_mask_tel(ft), "whatsapp": aplicar_mask_tel(fw), "cnpj": aplicar_mask_cnpj(fc), "email": fe, "endereco": fa}
-                try:
-                    if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
-                    else: supabase.table("fornecedores").insert(p).execute()
-                    limpar_campos(); st.rerun()
-                except: st.error("Erro ao salvar fornecedor.")
-
-        for f in (listar_fornecedores().items()):
-             with st.expander(f"🏢 {f[0]}"):
+            if st.button("SALVAR FORNECEDOR", use_container_width=True, type="primary"):
+                p = {"nome_fornecedor": fn, "representante": fr, "telefone": ft, "whatsapp": fw, "cnpj": fc, "email": fe, "endereco": fa}
+                if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
+                else: supabase.table("fornecedores").insert(p).execute()
+                limpar_campos(); st.rerun()
+        for f in (supabase.table("fornecedores").select("*").order("nome_fornecedor").execute().data or []):
+            with st.expander(f"🏢 {f['nome_fornecedor']}"):
                 c1, c2 = st.columns(2)
-                if c1.button("📝 Editar", key=f"ef_{f[1]}"): st.session_state.forn_edit_id=f[1]; st.rerun()
-                if c2.button("🗑️ Excluir", key=f"df_{f[1]}"): supabase.table("fornecedores").delete().eq("id", f[1]).execute(); st.rerun()
+                if c1.button("📝", key=f"ef_{f['id']}"): st.session_state.forn_edit_id=f['id']; st.rerun()
+                if c2.button("🗑️", key=f"df_{f['id']}"): supabase.table("fornecedores").delete().eq("id", f['id']).execute(); st.rerun()
 
     elif pag == 'CLIE':
         st.markdown("### Clientes")
         dc = {"nome_cliente": "", "representante": "", "telefone": "", "whatsapp": "", "cnpj": "", "email": "", "endereco": ""}
         if st.session_state.clie_edit_id:
-            try:
-                res = supabase.table("clientes").select("*").eq("id", st.session_state.clie_edit_id).single().execute()
-                if res.data: dc = res.data
-            except: pass
+            res = supabase.table("clientes").select("*").eq("id", st.session_state.clie_edit_id).single().execute()
+            if res.data: dc = res.data
         with st.container(border=True):
             cn = st.text_input("Cliente*", value=dc["nome_cliente"], key=f"cn_{ver}")
-            cr = st.text_input("Contato*", value=dc["representante"], key=f"cr_{ver}")
-            ct = st.text_input("Tel*", value=dc["telefone"], key=f"ct_{ver}")
+            cr = st.text_input("Contato", value=dc["representante"], key=f"cr_{ver}")
+            ct = st.text_input("Tel", value=dc["telefone"], key=f"ct_{ver}")
             cw = st.text_input("Zap", value=dc["whatsapp"], key=f"cw_{ver}")
             cc = st.text_input("CNPJ/CPF", value=dc["cnpj"], key=f"cc_{ver}")
             ce = st.text_input("E-mail", value=dc["email"], key=f"ce_{ver}")
             ca = st.text_area("Endereço", value=dc["endereco"], key=f"ca_{ver}")
             if st.button("SALVAR CLIENTE", use_container_width=True, type="primary"):
-                p = {"nome_cliente": cn, "representante": cr, "telefone": aplicar_mask_tel(ct), "whatsapp": aplicar_mask_tel(cw), "cnpj": aplicar_mask_cnpj(cc), "email": ce, "endereco": ca}
-                try:
-                    if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
-                    else: supabase.table("clientes").insert(p).execute()
-                    limpar_campos(); st.rerun()
-                except: st.error("Erro ao salvar cliente.")
+                p = {"nome_cliente": cn, "representante": cr, "telefone": ct, "whatsapp": cw, "cnpj": cc, "email": ce, "endereco": ca}
+                if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
+                else: supabase.table("clientes").insert(p).execute()
+                limpar_campos(); st.rerun()
+        for c in (supabase.table("clientes").select("*").order("nome_cliente").execute().data or []):
+            with st.expander(f"👤 {c['nome_cliente']}"):
+                c1, c2 = st.columns(2)
+                if c1.button("📝", key=f"ec_{c['id']}"): st.session_state.clie_edit_id=c['id']; st.rerun()
+                if c2.button("🗑️", key=f"dc_{c['id']}"): excluir_em_cascata_cliente(c['id']); st.rerun()
+
+    elif pag == 'LISTA':
+        st.markdown("### Relatórios")
+        obs_dict_l, cats_l = listar_obras(), listar_categorias()
+        if obs_dict_l:
+            o_f = st.selectbox("Obra", list(obs_dict_l.keys()), key=f"lo_{ver}")
+            d_i, d_f = st.date_input("Período", [datetime.now().replace(day=1), datetime.now()])
+            if o_f:
+                query = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("obra_id", obs_dict_l[o_f]['id']).gte("created_at", d_i).lte("created_at", f"{d_f} 23:59:59")
+                dados = query.execute().data
+                if dados:
+                    df_p = pd.DataFrame(dados)
+                    st.download_button("📥 PDF", gerar_pdf(df_p, o_f), f"{o_f}.pdf")
+                    st.download_button("📊 Excel", gerar_excel(df_p), f"{o_f}.xlsx")
+                    for g in dados:
+                        with st.expander(f"{g['descricao']} - {formatar_real(g['valor'])}"):
+                            if g.get('url_comprovante'): st.image(g['url_comprovante'])
+                            if st.button("Remover", key=f"dg_{g['id']}"):
+                                supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
 
     elif pag == 'OBRA' and perf == 'ADMIN':
-        st.markdown("### Cadastro de Obras")
-        do = {"nome_obra": "", "cliente_id": "", "tipo_obra": "", "local_obra": "", "orcamento_previsto": 0.0, "lucro_estimado": 0.0, "impostos_estimados": 0.0}
+        st.markdown("### Gestão de Obras")
+        do = {"nome_obra":"","cliente_id":"","tipo_obra":"","local_obra":"","orcamento_previsto":0.0,"lucro_estimado":0.0,"impostos_estimados":0.0}
         if st.session_state.obra_edit_id:
-            try:
-                res = supabase.table("obras").select("*").eq("id", st.session_state.obra_edit_id).single().execute()
-                if res.data: do = res.data
-            except: pass
-        clis = listar_clientes(); id_to_name = {v: k for k, v in clis.items()}
+            res = supabase.table("obras").select("*").eq("id", st.session_state.obra_edit_id).single().execute()
+            if res.data: do = res.data
+        clis = listar_clientes()
         with st.container(border=True):
-            on = st.text_input("Nome da Obra*", value=do["nome_obra"], key=f"on_{ver}")
-            cl_idx = ([""] + list(clis.keys())).index(id_to_name.get(do["cliente_id"], "")) if do["cliente_id"] in id_to_name else 0
-            oc = st.selectbox("Cliente*", [""] + list(clis.keys()), index=cl_idx, key=f"oc_{ver}")
-            ov = st.number_input("Orçamento Previsto (R$)", min_value=0.0, value=float(do["orcamento_previsto"]), key=f"ov_{ver}")
-            c_luc, c_imp = st.columns(2)
-            olucro = c_luc.number_input("Lucro (%)", min_value=0.0, max_value=100.0, value=float(do.get("lucro_estimado", 0)), key=f"olucro_{ver}")
-            oimposto = c_imp.number_input("Imposto (%)", min_value=0.0, max_value=100.0, value=float(do.get("impostos_estimados", 0)), key=f"oimposto_{ver}")
-            ot_lista = ["", "Residencial", "Comercial", "Reforma", "Industrial", "Outro"]
-            ot_idx = ot_lista.index(do["tipo_obra"]) if do["tipo_obra"] in ot_lista else 0
-            ot = st.selectbox("Tipo*", ot_lista, index=ot_idx, key=f"ot_{ver}")
-            ol = st.text_input("Localização", value=do["local_obra"], key=f"ol_{ver}")
-            if st.button("SALVAR OBRA", type="primary", use_container_width=True):
-                p = {"nome_obra":on,"cliente_id":clis[oc],"tipo_obra":ot,"local_obra":ol,"orcamento_previsto":ov,"lucro_estimado":olucro,"impostos_estimados":oimposto}
-                try:
-                    if st.session_state.obra_edit_id: supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
-                    else: supabase.table("obras").insert(p).execute()
-                    limpar_campos(); st.rerun()
-                except: st.error("Erro: A tabela 'obras' ainda não foi criada no Supabase.")
-        
-        obs_l = listar_obras()
-        for nome, ob in obs_l.items():
-            with st.expander(f"🏗️ {str(nome)}"):
-                st.write(f"**Orçamento:** {formatar_real(ob['orcamento_previsto'])} | **Lucro:** {ob.get('lucro_estimado')}%")
-                b1, b2 = st.columns(2)
-                if b1.button("📝 Editar", key=f"eob_{ob['id']}"): st.session_state.obra_edit_id=ob['id']; st.rerun()
-                if b2.button("🗑️ Excluir", key=f"dob_{ob['id']}"):
-                    supabase.table("lancamentos_obra").delete().eq("obra_id", ob['id']).execute()
-                    supabase.table("obras").delete().eq("id", ob['id']).execute(); st.rerun()
+            on = st.text_input("Nome*", value=do["nome_obra"], key=f"on_{ver}")
+            oc = st.selectbox("Cliente*", list(clis.keys()), key=f"oc_{ver}")
+            ov = st.number_input("Orçamento", value=float(do["orcamento_previsto"]), key=f"ov_{ver}")
+            oluc = st.number_input("Lucro %", value=float(do["lucro_estimado"]), key=f"oluc_{ver}")
+            oimp = st.number_input("Imposto %", value=float(do["impostos_estimados"]), key=f"oimp_{ver}")
+            ot = st.selectbox("Tipo", ["Residencial", "Comercial", "Reforma"], key=f"ot_{ver}")
+            ol = st.text_input("Local", value=do["local_obra"], key=f"ol_{ver}")
+            if st.button("SALVAR OBRA", use_container_width=True, type="primary"):
+                p = {"nome_obra":on,"cliente_id":clis[oc],"tipo_obra":ot,"local_obra":ol,"orcamento_previsto":ov,"lucro_estimado":oluc,"impostos_estimados":oimp}
+                if st.session_state.obra_edit_id: supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
+                else: supabase.table("obras").insert(p).execute()
+                limpar_campos(); st.rerun()
+        for ob in (supabase.table("obras").select("*").execute().data or []):
+            with st.expander(f"🏗️ {ob['nome_obra']}"):
+                if st.button("Editar", key=f"eob_{ob['id']}"): st.session_state.obra_edit_id=ob['id']; st.rerun()
 
     elif pag == 'USUARIOS' and perf == 'ADMIN':
         st.markdown("### Equipe")
         with st.container(border=True):
-            ne, ns = st.text_input("E-mail", key=f"ue_{ver}"), st.text_input("Senha", type="password", key=f"us_{ver}")
-            np = st.selectbox("Perfil", ["", "LANCADOR", "ADMIN"], index=0, key=f"up_{ver}")
-            if st.button("CRIAR", use_container_width=True, type="primary"):
-                if ne and ns and np:
-                    try:
-                        supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
-                        limpar_campos(); st.rerun()
-                    except: st.error("Erro ao criar usuário.")
+            ne, ns = st.text_input("E-mail"), st.text_input("Senha", type="password")
+            np = st.selectbox("Perfil", ["LANCADOR", "ADMIN"])
+            if st.button("CRIAR"):
+                supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute(); st.rerun()
+        st.table(pd.DataFrame(supabase.table("usuarios").select("email, perfil").execute().data))
