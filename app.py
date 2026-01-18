@@ -219,11 +219,9 @@ else:
                 valor_lucro_previsto = orcado * (perc_lucro / 100)
                 valor_imposto = orcado * (perc_imposto / 100)
                 
-                # CÁLCULO LUCRO REAL: Orçado - Gastos - Impostos
                 lucro_real = orcado - gasto_total - valor_imposto
                 
                 st.markdown('<p class="main-title">Saúde Financeira</p>', unsafe_allow_html=True)
-                # KPIs superiores (4 colunas para caber o Lucro Real)
                 c1, c2, c3, c4 = st.columns(4)
                 with c1: st.markdown(f'<div class="metric-container"><p class="metric-label">Orçado</p><p class="metric-value">{formatar_real(orcado)}</p></div>', unsafe_allow_html=True)
                 with c2: st.markdown(f'<div class="metric-container"><p class="metric-label">Exp. Lucro</p><p class="metric-value">{formatar_real(valor_lucro_previsto)}</p></div>', unsafe_allow_html=True)
@@ -359,11 +357,32 @@ else:
             ot_idx = ot_lista.index(do["tipo_obra"]) if do["tipo_obra"] in ot_lista else 0
             ot = st.selectbox("Tipo*", ot_lista, index=ot_idx, key=f"ot_{ver}")
             ol = st.text_input("Localização", value=do["local_obra"], key=f"ol_{ver}")
+            
+            # --- CORREÇÃO APLICADA AQUI ---
             if st.button("SALVAR OBRA", type="primary", use_container_width=True):
-                p = {"nome_obra":on,"cliente_id":clis[oc],"tipo_obra":ot,"local_obra":ol,"orcamento_previsto":ov,"lucro_estimado":olucro,"impostos_estimados":oimposto}
-                if st.session_state.obra_edit_id: supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
-                else: supabase.table("obras").insert(p).execute()
-                limpar_campos(); st.rerun()
+                try:
+                    id_cliente = clis.get(oc)
+                    if not on or not id_cliente:
+                        st.error("Preencha o Nome e selecione um Cliente.")
+                    else:
+                        p = {
+                            "nome_obra": on,
+                            "cliente_id": id_cliente,
+                            "tipo_obra": ot,
+                            "local_obra": ol,
+                            "orcamento_previsto": float(ov),
+                            "lucro_estimado": float(olucro),
+                            "impostos_estimados": float(oimposto)
+                        }
+                        if st.session_state.obra_edit_id:
+                            supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
+                        else:
+                            supabase.table("obras").insert(p).execute()
+                        limpar_campos(); st.rerun()
+                except Exception as e:
+                    st.error(f"Erro no Banco de Dados: {str(e)}")
+            # ------------------------------
+
         for ob in (supabase.table("obras").select("*, clientes(nome_cliente)").order("created_at", desc=True).execute().data or []):
             with st.expander(f"🏗️ {ob['nome_obra']}"):
                 st.write(f"**Orçamento:** {formatar_real(ob['orcamento_previsto'])} | **Lucro:** {ob.get('lucro_estimado')}%")
