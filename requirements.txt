@@ -5,3 +5,5 @@ requests
 pandas
 supabase
 fpdf
+fpdf2
+xlsxwriter
