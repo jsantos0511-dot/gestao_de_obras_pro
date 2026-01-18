@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 from supabase import create_client, Client
-import os
 import uuid
 import re
 from datetime import datetime
@@ -50,18 +49,6 @@ def realizar_login(email, senha):
     return False
 
 # --- 3. FORMATADORES ---
-def aplicar_mask_cnpj(cnpj):
-    if not cnpj: return ""
-    num = re.sub(r'\D', '', str(cnpj))
-    return f"{num[:2]}.{num[2:5]}.{num[5:8]}/{num[8:12]}-{num[12:]}" if len(num) == 14 else cnpj
-
-def aplicar_mask_tel(tel):
-    if not tel: return ""
-    num = re.sub(r'\D', '', str(tel))
-    if len(num) == 11: return f"({num[:2]}) {num[2:7]}-{num[7:]}"
-    elif len(num) == 10: return f"({num[:2]}) {num[2:6]}-{num[6:]}"
-    return tel
-
 def formatar_real(valor):
     if valor is None: valor = 0
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
@@ -71,9 +58,7 @@ st.markdown(f"""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {{display: none;}}
     .block-container {{ padding-top: 2rem !important; }}
-    img {{ border-radius: 0px !important; }}
     .stImage > img {{ border-radius: 0px !important; display: block; margin: 0 auto; }}
-    .main-title {{ color: #FFFFFF !important; font-size: 1.4rem; font-weight: 700; margin-bottom: 15px; }}
     .metric-container {{
         background: #1E1E1E; padding: 15px; border-radius: 10px; 
         border: 1px solid #333; margin-bottom: 10px; text-align: center;
@@ -120,9 +105,12 @@ st.markdown("---")
 # --- 7. FUNÇÕES DE APOIO ---
 def listar_obras_unicas():
     try:
-        res = supabase.table("lancamentos_obra").select("nome_obra").execute()
-        return sorted(list(set([str(item['nome_obra']) for item in res.data if item['nome_obra']])))
-    except: return []
+        res = supabase.table("lancamentos_obra").select("nome_obra, orcamento_previsto, lucro_estimado, impostos_estimados, tipo_obra").execute()
+        df = pd.DataFrame(res.data)
+        if df.empty: return {}
+        # Pega o registro mais recente de cada obra para ter os valores configurados
+        return df.drop_duplicates(subset=['nome_obra'], keep='last').set_index('nome_obra').to_dict('index')
+    except: return {}
 
 def listar_categorias():
     try:
@@ -132,14 +120,14 @@ def listar_categorias():
 
 def listar_fornecedores():
     try:
-        res = supabase.table("fornecedores").select("id, nome_fornecedor").order("nome_fornecedor").execute()
-        return {item['nome_fornecedor']: item['id'] for item in res.data}
+        res = supabase.table("fornecedores").select("*").order("nome_fornecedor").execute()
+        return {item['nome_fornecedor']: item for item in res.data}
     except: return {}
 
 def listar_clientes():
     try:
-        res = supabase.table("clientes").select("id, nome_cliente").order("nome_cliente").execute()
-        return {item['nome_cliente']: item['id'] for item in res.data}
+        res = supabase.table("clientes").select("*").order("nome_cliente").execute()
+        return {item['nome_cliente']: item for item in res.data}
     except: return {}
 
 def gerar_pdf(df, nome_obra):
@@ -168,6 +156,7 @@ if st.session_state.menu_aberto:
     perf = st.session_state.user_perfil
     if st.button("📊 Dashboard"): st.session_state.pagina='RESUMO'; st.session_state.menu_aberto=False; st.rerun()
     if st.button("💸 Lançar Gasto"): st.session_state.pagina='GASTO'; st.session_state.menu_aberto=False; st.rerun()
+    if st.button("🏗️ Configurar Obras"): st.session_state.pagina='OBRA_ADAPT'; st.session_state.menu_aberto=False; st.rerun()
     if st.button("📋 Relatórios"): st.session_state.pagina='LISTA'; st.session_state.menu_aberto=False; st.rerun()
     if st.button("👤 Clientes"): st.session_state.pagina='CLIE'; st.session_state.menu_aberto=False; st.rerun()
     if st.button("🤝 Fornecedores"): st.session_state.pagina='FORN'; st.session_state.menu_aberto=False; st.rerun()
@@ -181,84 +170,83 @@ else:
     pag, ver = st.session_state.pagina, st.session_state.form_version
 
     if pag == 'RESUMO':
-        obras = listar_obras_unicas()
-        if not obras: st.info("Realize o primeiro lançamento para ver o Dashboard.")
+        obras_data = listar_obras_unicas()
+        if not obras_data: st.info("Nenhuma obra encontrada.")
         else:
-            sel = st.selectbox("Selecione a Obra para Análise", [""] + obras, index=0, key=f"s_res_{ver}")
+            sel = st.selectbox("Selecione a Obra", [""] + list(obras_data.keys()), index=0, key=f"s_res_{ver}")
             if sel:
-                dados = supabase.table("lancamentos_obra").select("*").eq("nome_obra", sel).execute().data
-                if dados:
-                    df = pd.DataFrame(dados)
-                    gasto = df['valor'].sum()
-                    # Pega os dados do lançamento mais recente desta obra
-                    orc = float(df['orcamento_previsto'].iloc[-1]) if 'orcamento_previsto' in df.columns else 0
-                    luc_p = float(df['lucro_estimado'].iloc[-1]) if 'lucro_estimado' in df.columns else 0
-                    imp_p = float(df['impostos_estimados'].iloc[-1]) if 'impostos_estimados' in df.columns else 0
-                    
-                    v_imp = orc * (imp_p/100)
-                    l_real = orc - gasto - v_imp
-                    
-                    c1,c2,c3,c4 = st.columns(4)
-                    c1.markdown(f'<div class="metric-container"><p class="metric-label">Orçado</p><p class="metric-value">{formatar_real(orc)}</p></div>', unsafe_allow_html=True)
-                    c2.markdown(f'<div class="metric-container"><p class="metric-label">Exp. Lucro</p><p class="metric-value">{formatar_real(orc*(luc_p/100))}</p></div>', unsafe_allow_html=True)
-                    c3.markdown(f'<div class="metric-container"><p class="metric-label">Imposto ({imp_p}%)</p><p class="metric-value">{formatar_real(v_imp)}</p></div>', unsafe_allow_html=True)
-                    c4.markdown(f'<div class="metric-container"><p class="metric-label">Lucro Real</p><p class="metric-value" style="color:{"#00FF00" if l_real > 0 else "#FF0000"}">{formatar_real(l_real)}</p></div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="data-card"><h3>Gasto Acumulado: {formatar_real(gasto)}</h3></div>', unsafe_allow_html=True)
+                d_obra = obras_data[sel]
+                res_g = supabase.table("lancamentos_obra").select("valor").eq("nome_obra", sel).execute()
+                gasto = sum(float(i['valor']) for i in res_g.data)
+                
+                orc = float(d_obra.get('orcamento_previsto', 0))
+                imp_p = float(d_obra.get('impostos_estimados', 0))
+                v_imp = orc * (imp_p/100)
+                l_real = orc - gasto - v_imp
+                
+                c1,c2,c3,c4 = st.columns(4)
+                c1.markdown(f'<div class="metric-container"><p class="metric-label">Orçado</p><p class="metric-value">{formatar_real(orc)}</p></div>', unsafe_allow_html=True)
+                c2.markdown(f'<div class="metric-container"><p class="metric-label">Tipo</p><p class="metric-value">{d_obra.get("tipo_obra", "N/A")}</p></div>', unsafe_allow_html=True)
+                c3.markdown(f'<div class="metric-container"><p class="metric-label">Imposto</p><p class="metric-value">{formatar_real(v_imp)}</p></div>', unsafe_allow_html=True)
+                c4.markdown(f'<div class="metric-container"><p class="metric-label">Lucro Real</p><p class="metric-value">{formatar_real(l_real)}</p></div>', unsafe_allow_html=True)
 
     elif pag == 'GASTO':
-        st.markdown("### Lançamento de Gasto")
+        st.markdown("### Novo Lançamento")
+        obras_dict = listar_obras_unicas()
         cats, forns = listar_categorias(), listar_fornecedores()
         with st.container(border=True):
-            obras_existentes = listar_obras_unicas()
-            o_nome = st.selectbox("Obra Existente", [""] + obras_existentes, index=0)
-            o_novo = st.text_input("OU Nome de Nova Obra")
-            obra_final = o_novo if o_novo else o_nome
+            o_sel = st.selectbox("Obra Existente", [""] + list(obras_dict.keys()), index=0)
+            o_nova = st.text_input("OU Nome de Nova Obra")
+            obra_final = o_nova if o_nova else o_sel
             
-            c_s = st.selectbox("Categoria*", [""] + list(cats.keys()), index=0, key=f"gc_{ver}")
-            f_s = st.selectbox("Fornecedor*", [""] + list(forns.keys()), index=0, key=f"gf_{ver}")
+            # Se for obra existente, puxa os valores automáticos
+            ref = obras_dict.get(o_sel, {})
+            v_orc = st.number_input("Orçamento Total (R$)", value=float(ref.get('orcamento_previsto', 0.0)))
+            v_luc = st.number_input("Lucro (%)", value=float(ref.get('lucro_estimado', 0.0)))
+            v_imp = st.number_input("Imposto (%)", value=float(ref.get('impostos_estimados', 0.0)))
             
-            c1, c2, c3 = st.columns(3)
-            v_orc = c1.number_input("Valor do Contrato (R$)", min_value=0.0)
-            v_luc = c2.number_input("Lucro (%)", min_value=0.0)
-            v_imp = c3.number_input("Imposto (%)", min_value=0.0)
+            t_obra = st.selectbox("Tipo de Obra", ["", "Residencial", "Comercial", "Reforma", "Industrial", "Outro"], index=0)
+            c_s = st.selectbox("Categoria*", [""] + list(cats.keys()), index=0)
+            f_s = st.selectbox("Fornecedor*", [""] + list(forns.keys()), index=0)
+            desc = st.text_input("Descrição")
+            val = st.number_input("Valor do Gasto", min_value=0.0)
+            status = st.selectbox("Status", ["", "Pago", "Pendente"], index=0)
             
-            d = st.text_input("Descrição", key=f"gd_{ver}")
-            v = st.number_input("Valor do Lançamento (R$)", min_value=0.0, key=f"gv_{ver}")
-            st_p = st.selectbox("Status", ["", "Pago", "Pendente"], index=0, key=f"gs_{ver}")
-            foto = st.camera_input("Foto do Comprovante", key=f"gp_{ver}")
-            
-            if st.button("REGISTRAR GASTO", use_container_width=True, type="primary"):
-                if obra_final and c_s and f_s and v > 0:
-                    url = None
-                    if foto:
-                        n_arq = f"{uuid.uuid4()}.jpg"
-                        supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
-                        url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
-                    
+            if st.button("SALVAR GASTO", use_container_width=True, type="primary"):
+                if obra_final and c_s and val > 0:
                     dados = {
-                        "nome_obra": obra_final, "categoria_id": cats[c_s], "fornecedor_id": forns[f_s],
-                        "descricao": d, "valor": v, "url_comprovante": url, "status_pagamento": st_p,
+                        "nome_obra": obra_final, "categoria_id": cats[c_s], "fornecedor_id": forns[f_s]['id'] if f_s else None,
+                        "descricao": desc, "valor": val, "status_pagamento": status, "tipo_obra": t_obra,
                         "orcamento_previsto": v_orc, "lucro_estimado": v_luc, "impostos_estimados": v_imp
                     }
                     supabase.table("lancamentos_obra").insert(dados).execute()
                     limpar_campos(); st.rerun()
 
+    elif pag == 'OBRA_ADAPT':
+        st.markdown("### Configuração de Obras (Histórico)")
+        obras_dict = listar_obras_unicas()
+        for nome, dados in obras_dict.items():
+            with st.expander(f"🏗️ {nome}"):
+                st.write(f"**Tipo:** {dados['tipo_obra']}")
+                st.write(f"**Orçamento:** {formatar_real(dados['orcamento_previsto'])}")
+                st.write(f"**Taxas:** Lucro {dados['lucro_estimado']}% | Imposto {dados['impostos_estimados']}%")
+                st.info("Para alterar estes valores, realize um novo lançamento para esta obra com os dados atualizados.")
+
     elif pag == 'FORN':
         st.markdown("### Fornecedores")
-        df = {"nome_fornecedor": "", "representante": "", "telefone": "", "whatsapp": "", "cnpj": "", "email": "", "endereco": ""}
+        df_f = {"nome_fornecedor": "", "representante": "", "telefone": "", "whatsapp": "", "cnpj": "", "email": "", "endereco": ""}
         if st.session_state.forn_edit_id:
             res = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
-            if res.data: df = res.data
+            if res.data: df_f = res.data
         with st.container(border=True):
-            fn = st.text_input("Nome da Empresa*", value=df["nome_fornecedor"], key=f"fn_{ver}")
-            fr = st.text_input("Representante", value=df["representante"], key=f"fr_{ver}")
-            ft = st.text_input("Telefone", value=df["telefone"], key=f"ft_{ver}")
-            fw = st.text_input("WhatsApp", value=df["whatsapp"], key=f"fw_{ver}")
-            fc = st.text_input("CNPJ", value=df["cnpj"], key=f"fc_{ver}")
-            fe = st.text_input("E-mail", value=df["email"], key=f"fe_{ver}")
-            fa = st.text_area("Endereço Completo", value=df["endereco"], key=f"fa_{ver}")
-            if st.button("SALVAR FORNECEDOR", use_container_width=True, type="primary"):
-                p = {"nome_fornecedor": fn, "representante": fr, "telefone": ft, "whatsapp": fw, "cnpj": fc, "email": fe, "endereco": fa}
+            fn = st.text_input("Empresa*", value=df_f["nome_fornecedor"])
+            fr = st.text_input("Representante", value=df_f["representante"])
+            ft = st.text_input("Telefone", value=df_f["telefone"])
+            fc = st.text_input("CNPJ", value=df_f["cnpj"])
+            fe = st.text_input("E-mail", value=df_f["email"])
+            fa = st.text_area("Endereço", value=df_f["endereco"])
+            if st.button("SALVAR FORNECEDOR", use_container_width=True):
+                p = {"nome_fornecedor": fn, "representante": fr, "telefone": ft, "cnpj": fc, "email": fe, "endereco": fa}
                 if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
                 else: supabase.table("fornecedores").insert(p).execute()
                 limpar_campos(); st.rerun()
@@ -268,20 +256,19 @@ else:
 
     elif pag == 'CLIE':
         st.markdown("### Clientes")
-        dc = {"nome_cliente": "", "representante": "", "telefone": "", "whatsapp": "", "cnpj": "", "email": "", "endereco": ""}
+        df_c = {"nome_cliente": "", "representante": "", "telefone": "", "cnpj": "", "email": "", "endereco": ""}
         if st.session_state.clie_edit_id:
             res = supabase.table("clientes").select("*").eq("id", st.session_state.clie_edit_id).single().execute()
-            if res.data: dc = res.data
+            if res.data: df_c = res.data
         with st.container(border=True):
-            cn = st.text_input("Nome do Cliente*", value=dc["nome_cliente"], key=f"cn_{ver}")
-            cr = st.text_input("Pessoa de Contato", value=dc["representante"], key=f"cr_{ver}")
-            ct = st.text_input("Telefone", value=dc["telefone"], key=f"ct_{ver}")
-            cw = st.text_input("WhatsApp", value=dc["whatsapp"], key=f"cw_{ver}")
-            cc = st.text_input("CPF/CNPJ", value=dc["cnpj"], key=f"cc_{ver}")
-            ce = st.text_input("E-mail", value=dc["email"], key=f"ce_{ver}")
-            ca = st.text_area("Endereço", value=dc["endereco"], key=f"ca_{ver}")
-            if st.button("SALVAR CLIENTE", use_container_width=True, type="primary"):
-                p = {"nome_cliente": cn, "representante": cr, "telefone": ct, "whatsapp": cw, "cnpj": cc, "email": ce, "endereco": ca}
+            cn = st.text_input("Nome*", value=df_c["nome_cliente"])
+            cr = st.text_input("Contato", value=df_c["representante"])
+            ct = st.text_input("Telefone", value=df_c["telefone"])
+            cc = st.text_input("CPF/CNPJ", value=df_c["cnpj"])
+            ce = st.text_input("E-mail", value=df_c["email"])
+            ca = st.text_area("Endereço", value=df_c["endereco"])
+            if st.button("SALVAR CLIENTE", use_container_width=True):
+                p = {"nome_cliente": cn, "representante": cr, "telefone": ct, "cnpj": cc, "email": ce, "endereco": ca}
                 if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
                 else: supabase.table("clientes").insert(p).execute()
                 limpar_campos(); st.rerun()
@@ -290,26 +277,27 @@ else:
                 if st.button("Editar", key=f"ec_{c['id']}"): st.session_state.clie_edit_id=c['id']; st.rerun()
 
     elif pag == 'LISTA':
-        st.markdown("### Relatórios por Obra")
+        st.markdown("### Relatórios")
         obras = listar_obras_unicas()
         if obras:
-            o_f = st.selectbox("Selecione a Obra", [""] + obras, index=0, key=f"lo_{ver}")
+            o_f = st.selectbox("Obra", [""] + list(obras.keys()))
             if o_f:
                 dados = supabase.table("lancamentos_obra").select("*, categorias_obra(nome_categoria)").eq("nome_obra", o_f).execute().data
                 if dados:
                     df_p = pd.DataFrame(dados)
-                    st.download_button("📥 Gerar PDF", gerar_pdf(df_p, o_f), f"{o_f}.pdf")
+                    st.download_button("📥 PDF", gerar_pdf(df_p, o_f), f"{o_f}.pdf")
                     for g in dados:
                         with st.expander(f"{g['descricao']} - {formatar_real(g['valor'])}"):
                             if st.button("Excluir", key=f"dg_{g['id']}"):
                                 supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
 
     elif pag == 'USUARIOS' and st.session_state.user_perfil == 'ADMIN':
-        st.markdown("### Gestão de Acessos")
+        st.markdown("### Equipe")
         with st.container(border=True):
-            ne, ns = st.text_input("E-mail"), st.text_input("Senha", type="password")
-            np = st.selectbox("Perfil", ["", "LANCADOR", "ADMIN"], index=0)
-            if st.button("CADASTRAR USUÁRIO"):
+            ne = st.text_input("E-mail")
+            ns = st.text_input("Senha", type="password")
+            np = st.selectbox("Perfil", ["", "LANCADOR", "ADMIN"])
+            if st.button("CRIAR"):
                 if ne and ns and np:
                     supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute(); st.rerun()
         st.table(pd.DataFrame(supabase.table("usuarios").select("email, perfil").execute().data))
