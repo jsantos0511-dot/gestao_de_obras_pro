@@ -80,8 +80,8 @@ st.markdown(f"""
         background: #1E1E1E; padding: 15px; border-radius: 10px; 
         border: 1px solid #333; margin-bottom: 10px; text-align: center;
     }}
-    .metric-label {{ color: #AAAAAA; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }}
-    .metric-value {{ color: #FFFFFF; font-size: 1.2rem; font-weight: 800; }}
+    .metric-label {{ color: #AAAAAA; font-size: 0.70rem; font-weight: 600; text-transform: uppercase; }}
+    .metric-value {{ color: #FFFFFF; font-size: 1.1rem; font-weight: 800; }}
     .data-card {{ 
         background: #F8F9FA; padding: 20px; border-radius: 8px; 
         border: 1px solid #E9ECEF; margin-bottom: 15px; color: #1e1e1e; 
@@ -212,16 +212,25 @@ else:
                 res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': obra_info['id']}).execute()
                 gasto_total = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
                 orcado = float(obra_info['orcamento_previsto']) if obra_info['orcamento_previsto'] else 0
-                lucro = float(obra_info.get('lucro_estimado', 0)) if obra_info.get('lucro_estimado') else 0
-                imposto = float(obra_info.get('impostos_estimados', 0)) if obra_info.get('impostos_estimados') else 0
+                
+                perc_lucro = float(obra_info.get('lucro_estimado', 0)) if obra_info.get('lucro_estimado') else 0
+                perc_imposto = float(obra_info.get('impostos_estimados', 0)) if obra_info.get('impostos_estimados') else 0
+                
+                valor_lucro_previsto = orcado * (perc_lucro / 100)
+                valor_imposto = orcado * (perc_imposto / 100)
+                
+                # CÁLCULO LUCRO REAL: Orçado - Gastos - Impostos
+                lucro_real = orcado - gasto_total - valor_imposto
                 
                 st.markdown('<p class="main-title">Saúde Financeira</p>', unsafe_allow_html=True)
-                c1, c2, c3 = st.columns(3)
+                # KPIs superiores (4 colunas para caber o Lucro Real)
+                c1, c2, c3, c4 = st.columns(4)
                 with c1: st.markdown(f'<div class="metric-container"><p class="metric-label">Orçado</p><p class="metric-value">{formatar_real(orcado)}</p></div>', unsafe_allow_html=True)
-                with c2: st.markdown(f'<div class="metric-container"><p class="metric-label">Exp. Lucro</p><p class="metric-value">{formatar_real(lucro)}</p></div>', unsafe_allow_html=True)
-                with c3: st.markdown(f'<div class="metric-container"><p class="metric-label">Impostos</p><p class="metric-value">{formatar_real(imposto)}</p></div>', unsafe_allow_html=True)
+                with c2: st.markdown(f'<div class="metric-container"><p class="metric-label">Exp. Lucro</p><p class="metric-value">{formatar_real(valor_lucro_previsto)}</p></div>', unsafe_allow_html=True)
+                with c3: st.markdown(f'<div class="metric-container"><p class="metric-label">Imposto ({perc_imposto}%)</p><p class="metric-value">{formatar_real(valor_imposto)}</p></div>', unsafe_allow_html=True)
+                with c4: st.markdown(f'<div class="metric-container"><p class="metric-label">Lucro Real</p><p class="metric-value" style="color:{"#00FF00" if lucro_real > 0 else "#FF0000"}">{formatar_real(lucro_real)}</p></div>', unsafe_allow_html=True)
                 
-                st.markdown(f'<div class="data-card"><small>Gasto Acumulado</small><h3>{formatar_real(gasto_total)}</h3></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="data-card"><small>Gasto Acumulado (Realizado)</small><h3>{formatar_real(gasto_total)}</h3></div>', unsafe_allow_html=True)
                 if orcado > 0:
                     st.progress(min(gasto_total / orcado, 1.0))
                     if gasto_total > orcado: st.error(f"Orçamento excedido em {formatar_real(gasto_total - orcado)}")
@@ -342,10 +351,10 @@ else:
             on = st.text_input("Nome da Obra*", value=do["nome_obra"], key=f"on_{ver}")
             cl_idx = ([""] + list(clis.keys())).index(id_to_name.get(do["cliente_id"], "")) if do["cliente_id"] in id_to_name else 0
             oc = st.selectbox("Cliente*", [""] + list(clis.keys()), index=cl_idx, key=f"oc_{ver}")
-            ov = st.number_input("Orçamento Previsto", min_value=0.0, value=float(do["orcamento_previsto"]), key=f"ov_{ver}")
+            ov = st.number_input("Orçamento Previsto (R$)", min_value=0.0, value=float(do["orcamento_previsto"]), key=f"ov_{ver}")
             c_luc, c_imp = st.columns(2)
-            olucro = c_luc.number_input("Lucro (R$)", min_value=0.0, value=float(do.get("lucro_estimado", 0)), key=f"olucro_{ver}")
-            oimposto = c_imp.number_input("Imposto (R$)", min_value=0.0, value=float(do.get("impostos_estimados", 0)), key=f"oimposto_{ver}")
+            olucro = c_luc.number_input("Lucro (%)", min_value=0.0, max_value=100.0, value=float(do.get("lucro_estimado", 0)), key=f"olucro_{ver}")
+            oimposto = c_imp.number_input("Imposto (%)", min_value=0.0, max_value=100.0, value=float(do.get("impostos_estimados", 0)), key=f"oimposto_{ver}")
             ot_lista = ["", "Residencial", "Comercial", "Reforma", "Industrial", "Outro"]
             ot_idx = ot_lista.index(do["tipo_obra"]) if do["tipo_obra"] in ot_lista else 0
             ot = st.selectbox("Tipo*", ot_lista, index=ot_idx, key=f"ot_{ver}")
@@ -357,7 +366,7 @@ else:
                 limpar_campos(); st.rerun()
         for ob in (supabase.table("obras").select("*, clientes(nome_cliente)").order("created_at", desc=True).execute().data or []):
             with st.expander(f"🏗️ {ob['nome_obra']}"):
-                st.write(f"**Orçamento:** {formatar_real(ob['orcamento_previsto'])} | **Lucro:** {formatar_real(ob.get('lucro_estimado'))}")
+                st.write(f"**Orçamento:** {formatar_real(ob['orcamento_previsto'])} | **Lucro:** {ob.get('lucro_estimado')}%")
                 b1, b2 = st.columns(2)
                 if b1.button("📝", key=f"eob_{ob['id']}"): st.session_state.obra_edit_id=ob['id']; st.rerun()
                 if b2.button("🗑️", key=f"dob_{ob['id']}"):
