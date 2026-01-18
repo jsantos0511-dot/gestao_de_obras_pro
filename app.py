@@ -30,7 +30,6 @@ if 'pagina' not in st.session_state: st.session_state.pagina = 'RESUMO'
 if 'menu_aberto' not in st.session_state: st.session_state.menu_aberto = False
 if 'form_version' not in st.session_state: st.session_state.form_version = 0
 
-# Garantir que IDs de edição existam na sessão
 for key in ['forn_edit_id', 'clie_edit_id', 'obra_edit_id']:
     if key not in st.session_state: st.session_state[key] = None
 
@@ -68,12 +67,20 @@ def formatar_real(valor):
     if valor is None: valor = 0
     return f"R$ {valor:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
 
-# --- 4. ESTILO VISUAL ---
+# --- 4. ESTILO VISUAL (CORREÇÃO LOGO) ---
 st.markdown(f"""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {{display: none;}}
     .block-container {{ padding-top: 2rem !important; }}
+    
+    /* CORREÇÃO: Forçar cantos retos na logo */
+    [data-testid="stImage"] img {{ 
+        border-radius: 0px !important; 
+        object-fit: contain;
+    }}
+    
     .stImage > img {{ border-radius: 0px !important; display: block; margin: 0 auto; }}
+    
     .main-title {{ color: #FFFFFF !important; font-size: 1.4rem; font-weight: 700; margin-bottom: 15px; }}
     .metric-container {{
         background: #1E1E1E; padding: 15px; border-radius: 10px; 
@@ -240,8 +247,16 @@ else:
                             n_arq = f"{uuid.uuid4()}.jpg"
                             supabase.storage.from_("comprovantes").upload(n_arq, foto.getvalue())
                             url = f"{SUPABASE_URL}/storage/v1/object/public/comprovantes/{n_arq}"
-                        supabase.table("lancamentos_obra").insert({"obra_id": obs_dict[o_sel]['id'], "categoria_id": cats[c], "fornecedor_id": forns[f_sel], "descricao": d, "valor": v, "url_comprovante": url, "status_pagamento": status_p}).execute()
-                        st.success("Gasto lançado!"); limpar_campos(); st.rerun()
+                        supabase.table("lancamentos_obra").insert({
+                            "obra_id": obs_dict[o_sel]['id'], 
+                            "categoria_id": cats[c], 
+                            "fornecedor_id": forns[f_sel], 
+                            "descricao": d, 
+                            "valor": v, 
+                            "url_comprovante": url, 
+                            "status_pagamento": status_p
+                        }).execute()
+                        st.success("Gasto lançado com sucesso!"); limpar_campos(); st.rerun()
                     except Exception as e: st.error(f"Erro: {e}")
 
     elif pag == 'CLIE':
@@ -268,13 +283,13 @@ else:
 
     elif pag == 'FORN':
         st.markdown("### Fornecedores")
-        df = {"nome_fornecedor": "", "telefone": ""}
+        df_forn = {"nome_fornecedor": "", "telefone": ""}
         if st.session_state.forn_edit_id:
             res = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
-            if res.data: df = res.data
+            if res.data: df_forn = res.data
         with st.container(border=True):
-            fn = st.text_input("Nome do Fornecedor*", value=df["nome_fornecedor"], key=f"fn_{ver}")
-            ft = st.text_input("Telefone", value=df["telefone"], key=f"ft_{ver}")
+            fn = st.text_input("Nome do Fornecedor*", value=df_forn["nome_fornecedor"], key=f"fn_{ver}")
+            ft = st.text_input("Telefone", value=df_forn["telefone"], key=f"ft_{ver}")
             if st.button("SALVAR FORNECEDOR", use_container_width=True, type="primary"):
                 p = {"nome_fornecedor": fn, "telefone": aplicar_mask_tel(ft)}
                 if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
