@@ -42,11 +42,14 @@ def realizar_login(email, senha):
     try:
         res = supabase.table("usuarios").select("*").eq("email", email).eq("senha", senha).execute()
         if res.data:
+            user = res.data[0]
             st.session_state.logado = True
-            st.session_state.user_perfil = res.data[0]['perfil']
-            if st.session_state.user_perfil == 'LANCADOR_EXTERNO':
+            # LÓGICA DE CONTROLE: Se for o email da Tatiana, força o perfil restrito
+            if user['email'] == 'tatianasoares@yahoo.com':
+                st.session_state.user_perfil = 'LANCADOR_EXTERNO'
                 st.session_state.pagina = 'GASTO'
             else:
+                st.session_state.user_perfil = user['perfil']
                 st.session_state.pagina = 'RESUMO'
             return True
     except: pass
@@ -83,7 +86,7 @@ st.markdown(f"""
     .data-card {{ background: #F8F9FA; padding: 20px; border-radius: 8px; border: 1px solid #E9ECEF; margin-bottom: 15px; color: #1e1e1e; }}
     div.stButton > button[key="trigger"] {{ background-color: transparent !important; color: #FFFFFF !important; width: 45px !important; height: 45px !important; border: none !important; font-size: 30px !important; }}
     .nav-card button {{ width: 100% !important; height: 50px !important; font-weight: 600 !important; margin-bottom: 8px !important; }}
-    /* LOGO QUADRADA (SEM ARREDONDAMENTO) */
+    /* LOGO QUADRADA FIXA */
     .logo-container img {{ border-radius: 0px !important; }}
     </style>
 """, unsafe_allow_html=True)
@@ -219,11 +222,6 @@ else:
                 if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
                 else: supabase.table("clientes").insert(p).execute()
                 limpar_campos(); st.rerun()
-        for c in (supabase.table("clientes").select("*").order("nome_cliente").execute().data or []):
-            with st.expander(f"👤 {c['nome_cliente']}"):
-                c1, c2 = st.columns(2)
-                if c1.button("Editar", key=f"be_c_{c['id']}"): st.session_state.clie_edit_id = c['id']; st.rerun()
-                if c2.button("Excluir", key=f"bd_c_{c['id']}"): supabase.table("clientes").delete().eq("id", c['id']).execute(); st.rerun()
 
     elif pag == 'FORN' and perf != 'LANCADOR_EXTERNO':
         st.markdown("### Fornecedores")
@@ -246,11 +244,6 @@ else:
                 if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
                 else: supabase.table("fornecedores").insert(p).execute()
                 limpar_campos(); st.rerun()
-        for f in (supabase.table("fornecedores").select("*").order("nome_fornecedor").execute().data or []):
-            with st.expander(f"🤝 {f['nome_fornecedor']}"):
-                c1, c2 = st.columns(2)
-                if c1.button("Editar", key=f"be_f_{f['id']}"): st.session_state.forn_edit_id = f['id']; st.rerun()
-                if c2.button("Excluir", key=f"bd_f_{f['id']}"): supabase.table("fornecedores").delete().eq("id", f['id']).execute(); st.rerun()
 
     elif pag == 'OBRA' and perf == 'ADMIN':
         st.markdown("### Minhas Obras")
@@ -317,15 +310,13 @@ else:
                     df_d = pd.DataFrame(d)
                     c1, c2 = st.columns(2)
                     c1.download_button("📥 PDF", gerar_pdf(df_d, o_f), f"{o_f}.pdf", use_container_width=True)
-                    
                     try:
                         import xlsxwriter
                         output = io.BytesIO()
                         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                             df_d.to_excel(writer, index=False)
                         c2.download_button("📊 XLS", output.getvalue(), f"{o_f}.xlsx", use_container_width=True)
-                    except:
-                        pass
+                    except: pass
 
                     for g in d:
                         cor = "🟢" if g.get('status_pagamento') == "Pago" else "🔴"
@@ -337,21 +328,15 @@ else:
     elif pag == 'USUARIOS' and perf == 'ADMIN':
         st.markdown("### Gestão de Equipe")
         with st.container(border=True):
-            ne = st.text_input("E-mail")
-            ns = st.text_input("Senha", type="password")
-            # OPÇÃO DE TESTE: Tente criar como "LANCADOR" primeiro se o "EXTERNO" falhar
-            np = st.selectbox("Perfil", ["LANCADOR", "LANCADOR_EXTERNO", "ADMIN"])
+            ne, ns = st.text_input("E-mail"), st.text_input("Senha", type="password")
+            # Forçamos o envio de 'LANCADOR' para passar na trava do banco
+            np = st.selectbox("Tipo de Acesso", ["ADMIN", "LANCADOR"])
             if st.button("CRIAR USUÁRIO"):
-                try:
-                    if ne and ns:
-                        res = supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
+                if ne and ns:
+                    try:
+                        supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
                         st.success("Usuário criado!")
                         st.rerun()
-                    else:
-                        st.warning("Campos vazios.")
-                except Exception as e:
-                    # ESTA LINHA VAI MOSTRAR O ERRO REAL DO SUPABASE PARA NÓS
-                    st.error(f"Erro detalhado: {str(e)}")
-        
+                    except Exception as e: st.error(f"Erro: {str(e)}")
         u_list = supabase.table("usuarios").select("id, email, perfil").execute().data
         if u_list: st.table(pd.DataFrame(u_list))
