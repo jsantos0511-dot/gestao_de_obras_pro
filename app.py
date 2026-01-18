@@ -54,9 +54,7 @@ def realizar_login(email, senha):
 def aplicar_mask_cnpj(cnpj):
     if not cnpj: return ""
     num = re.sub(r'\D', '', str(cnpj))
-    if len(num) == 14:
-        return f"{num[:2]}.{num[2:5]}.{num[5:8]}/{num[8:12]}-{num[12:]}"
-    return cnpj
+    return f"{num[:2]}.{num[2:5]}.{num[5:8]}/{num[8:12]}-{num[12:]}" if len(num) == 14 else cnpj
 
 def aplicar_mask_tel(tel):
     if not tel: return ""
@@ -129,7 +127,7 @@ def listar_fornecedores():
     res = supabase.table("fornecedores").select("id, nome_fornecedor").order("nome_fornecedor").execute()
     return {item['nome_fornecedor']: item['id'] for item in res.data}
 
-# Funções de Relatório
+# Relatórios
 def gerar_pdf(df, nome_obra):
     pdf = FPDF()
     pdf.add_page()
@@ -211,11 +209,11 @@ else:
         clis = listar_clientes()
         cats, forns = listar_categorias(), listar_fornecedores()
         with st.container(border=True):
-            c_sel = st.selectbox("Selecione o Cliente*", [""] + list(clis.keys()), key=f"g_cli_{ver}")
+            c_sel = st.selectbox("Cliente*", [""] + list(clis.keys()), key=f"g_cli_{ver}")
             o_sel = ""
             if c_sel:
                 obs = listar_obras_por_cliente(clis[c_sel])
-                o_sel = st.selectbox("Selecione a Obra*", [""] + list(obs.keys()), key=f"g_obr_{ver}")
+                o_sel = st.selectbox("Obra*", [""] + list(obs.keys()), key=f"g_obr_{ver}")
             cat_sel = st.selectbox("Categoria*", [""] + list(cats.keys()), key=f"g_cat_{ver}")
             forn_sel = st.selectbox("Fornecedor*", [""] + list(forns.keys()), key=f"g_forn_{ver}")
             desc = st.text_input("Descrição", key=f"g_desc_{ver}")
@@ -234,10 +232,14 @@ else:
 
     elif pag == 'CLIE':
         st.markdown("### Clientes")
+        if st.session_state.clie_edit_id:
+            if st.button("➕ NOVO CLIENTE (LIMPAR CAMPOS)"): limpar_campos(); st.rerun()
+        
         dc = {"nome_cliente": "", "representante": "", "telefone": "", "whatsapp": "", "email": "", "cnpj": "", "endereco": ""}
         if st.session_state.clie_edit_id:
             res = supabase.table("clientes").select("*").eq("id", st.session_state.clie_edit_id).single().execute()
             if res.data: dc = res.data
+        
         with st.container(border=True):
             cn = st.text_input("Nome*", value=dc["nome_cliente"], key=f"cl_n_{ver}")
             cr = st.text_input("Representante", value=dc["representante"], key=f"cl_r_{ver}")
@@ -251,6 +253,7 @@ else:
                 if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
                 else: supabase.table("clientes").insert(p).execute()
                 limpar_campos(); st.rerun()
+        
         for c in (supabase.table("clientes").select("*").order("nome_cliente").execute().data or []):
             with st.expander(f"👤 {c['nome_cliente']}"):
                 c1, c2 = st.columns(2)
@@ -259,10 +262,14 @@ else:
 
     elif pag == 'FORN':
         st.markdown("### Fornecedores")
+        if st.session_state.forn_edit_id:
+            if st.button("➕ NOVO FORNECEDOR (LIMPAR CAMPOS)"): limpar_campos(); st.rerun()
+
         df = {"nome_fornecedor": "", "representante": "", "telefone": "", "whatsapp": "", "email": "", "cnpj": "", "endereco": ""}
         if st.session_state.forn_edit_id:
             res = supabase.table("fornecedores").select("*").eq("id", st.session_state.forn_edit_id).single().execute()
             if res.data: df = res.data
+        
         with st.container(border=True):
             fn = st.text_input("Empresa*", value=df["nome_fornecedor"], key=f"f_n_{ver}")
             fr = st.text_input("Contato", value=df["representante"], key=f"f_r_{ver}")
@@ -276,6 +283,7 @@ else:
                 if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
                 else: supabase.table("fornecedores").insert(p).execute()
                 limpar_campos(); st.rerun()
+        
         for f in (supabase.table("fornecedores").select("*").order("nome_fornecedor").execute().data or []):
             with st.expander(f"🤝 {f['nome_fornecedor']}"):
                 c1, c2 = st.columns(2)
@@ -284,6 +292,9 @@ else:
 
     elif pag == 'OBRA' and perf == 'ADMIN':
         st.markdown("### Minhas Obras")
+        if st.session_state.obra_edit_id:
+            if st.button("➕ NOVA OBRA (LIMPAR CAMPOS)"): limpar_campos(); st.rerun()
+
         do = {"nome_obra": "", "cliente_id": "", "orcamento_previsto": 0.0, "lucro_estimado": 0.0, "impostos_estimados": 0.0, "local_obra": ""}
         if st.session_state.obra_edit_id:
             res = supabase.table("obras").select("*").eq("id", st.session_state.obra_edit_id).single().execute()
@@ -308,7 +319,6 @@ else:
                     limpar_campos(); st.rerun()
         
         st.markdown("---")
-        # Listagem com Filtro
         f_cli = st.selectbox("Filtrar Obras por Cliente:", [""] + list(clis.keys()), key=f"fil_o_c_{ver}")
         if f_cli:
             obs_lista = supabase.table("obras").select("*").eq("cliente_id", clis[f_cli]).execute().data
