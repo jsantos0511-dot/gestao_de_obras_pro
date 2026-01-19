@@ -29,6 +29,7 @@ if 'pagina' not in st.session_state: st.session_state.pagina = 'RESUMO'
 if 'menu_aberto' not in st.session_state: st.session_state.menu_aberto = False
 if 'form_version' not in st.session_state: st.session_state.form_version = 0
 
+# Inicialização de IDs de edição
 for key in ['forn_edit_id', 'clie_edit_id', 'obra_edit_id']:
     if key not in st.session_state: st.session_state[key] = None
 
@@ -76,9 +77,11 @@ st.markdown(f"""
     .block-container {{ padding-top: 2rem !important; }}
     .main-title {{ color: #FFFFFF !important; font-size: 1.4rem; font-weight: 700; margin-bottom: 15px; }}
     
-    /* REMOVER CANTOS ARREDONDADOS DA LOGO */
-    [data-testid="stImage"] img {{ border-radius: 0px !important; }}
-    .logo-container img {{ border-radius: 0px !important; }}
+    /* REMOVER DEFINITIVAMENTE BORDAS ARREDONDADAS DA LOGO */
+    img, [data-testid="stImage"] img {{ 
+        border-radius: 0px !important; 
+        object-fit: contain !important;
+    }}
     
     .metric-container {{ background: #1E1E1E; padding: 15px; border-radius: 10px; border: 1px solid #333; margin-bottom: 10px; text-align: center; }}
     .metric-label {{ color: #AAAAAA; font-size: 0.70rem; font-weight: 600; text-transform: uppercase; }}
@@ -153,7 +156,6 @@ def gerar_pdf(df, nome_obra):
 
 def gerar_excel(df):
     output = io.BytesIO()
-    # CORREÇÃO: Try/Except para xlsxwriter
     try:
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='Gastos')
@@ -229,7 +231,11 @@ else:
                 st.write(f"📍 {c.get('endereco','')}\n📞 {c.get('whatsapp','')}")
                 c1, c2 = st.columns(2)
                 if c1.button("Editar", key=f"e_cl_{c['id']}"): st.session_state.clie_edit_id = c['id']; st.rerun()
-                if c2.button("Excluir", key=f"d_cl_{c['id']}"): supabase.table("clientes").delete().eq("id", c['id']).execute(); limpar_campos(); st.rerun()
+                if c2.button("Excluir", key=f"d_cl_{c['id']}"): 
+                    try:
+                        supabase.table("clientes").delete().eq("id", c['id']).execute()
+                        limpar_campos(); st.rerun()
+                    except: st.error("Erro ao excluir cliente.")
 
     elif pag == 'FORN' and perf != 'LANCADOR_EXTERNO':
         st.markdown("### Gestão de Fornecedores")
@@ -258,7 +264,13 @@ else:
                 st.write(f"📍 {f.get('endereco','')}\n📞 {f.get('whatsapp','')}")
                 c1, c2 = st.columns(2)
                 if c1.button("Editar", key=f"e_f_{f['id']}"): st.session_state.forn_edit_id = f['id']; st.rerun()
-                if c2.button("Excluir", key=f"d_f_{f['id']}"): supabase.table("fornecedores").delete().eq("id", f['id']).execute(); limpar_campos(); st.rerun()
+                if c2.button("Excluir", key=f"d_f_{f['id']}"): 
+                    try:
+                        # CORREÇÃO: Limpar IDs antes de excluir para evitar erro de referência na API
+                        st.session_state.forn_edit_id = None
+                        supabase.table("fornecedores").delete().eq("id", f['id']).execute()
+                        st.rerun()
+                    except: st.error("Este fornecedor possui vínculos e não pode ser excluído.")
 
     elif pag == 'OBRA' and perf == 'ADMIN':
         st.markdown("### Gestão de Obras")
@@ -331,18 +343,22 @@ else:
                         cor = "🟢" if g.get('status_pagamento') == "Pago" else "🔴"
                         with st.expander(f"{cor} {g['descricao']} | {formatar_real(g['valor'])}"):
                             if g.get('url_comprovante'): st.image(g['url_comprovante'])
-                            if st.button("Excluir", key=f"dg_{g['id']}"): supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
+                            if st.button("Excluir", key=f"dg_{g['id']}"): 
+                                supabase.table("lancamentos_obra").delete().eq("id", g['id']).execute(); st.rerun()
 
     elif pag == 'USUARIOS' and perf == 'ADMIN':
         st.markdown("### Gestão de Equipe")
         with st.container(border=True):
             ne = st.text_input("Novo E-mail")
             ns = st.text_input("Nova Senha", type="password")
-            np = st.selectbox("Perfil", ["ADMIN", "LANCADOR", "LANCADOR_EXTERNO"])
+            # AJUSTE: Removido sublinhado para testar restrição do banco (Imagem 7d2782)
+            np = st.selectbox("Perfil", ["ADMIN", "LANCADOR", "EXTERNO"])
             if st.button("CADASTRAR"):
                 try:
-                    supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
+                    # Mapeamento para garantir o valor correto no banco
+                    perf_bd = "LANCADOR_EXTERNO" if np == "EXTERNO" else np
+                    supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": perf_bd}).execute()
                     st.success("Sucesso!"); st.rerun()
-                except Exception as e: st.error(f"Erro: {str(e)}")
+                except Exception as e: st.error(f"Erro no Banco: Verifique se o perfil '{np}' é aceito.")
         u_l = supabase.table("usuarios").select("id, email, perfil").execute().data
         if u_l: st.table(pd.DataFrame(u_l))
