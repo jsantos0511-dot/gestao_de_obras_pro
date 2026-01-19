@@ -214,13 +214,13 @@ else:
                 if res.data: dc = res.data
             except: st.session_state.clie_edit_id = None
         with st.container(border=True):
-            cn = st.text_input("Nome*", value=dc["nome_cliente"])
-            cr = st.text_input("Representante", value=dc["representante"])
-            ct = st.text_input("Telefone", value=dc["telefone"])
-            cz = st.text_input("WhatsApp*", value=dc["whatsapp"])
-            ce = st.text_input("E-mail*", value=dc["email"])
-            cc = st.text_input("CNPJ/CPF", value=dc["cnpj"])
-            cend = st.text_input("Endereço", value=dc["endereco"])
+            cn = st.text_input("Nome*", value=dc["nome_cliente"], key=f"cn_{ver}")
+            cr = st.text_input("Representante", value=dc["representante"], key=f"cr_{ver}")
+            ct = st.text_input("Telefone", value=dc["telefone"], key=f"ct_{ver}")
+            cz = st.text_input("WhatsApp*", value=dc["whatsapp"], key=f"cz_{ver}")
+            ce = st.text_input("E-mail*", value=dc["email"], key=f"ce_{ver}")
+            cc = st.text_input("CNPJ/CPF", value=dc["cnpj"], key=f"cc_{ver}")
+            cend = st.text_input("Endereço", value=dc["endereco"], key=f"cend_{ver}")
             if st.button("SALVAR CLIENTE", use_container_width=True, type="primary"):
                 p = {"nome_cliente": cn, "representante": cr, "telefone": ct, "whatsapp": aplicar_mask_tel(cz), "email": ce, "cnpj": aplicar_mask_cnpj(cc), "endereco": cend}
                 if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
@@ -233,6 +233,7 @@ else:
                 if c1.button("Editar", key=f"e_cl_{c['id']}"): st.session_state.clie_edit_id = c['id']; st.rerun()
                 if c2.button("Excluir", key=f"d_cl_{c['id']}"): 
                     try:
+                        st.session_state.clie_edit_id = None
                         supabase.table("clientes").delete().eq("id", c['id']).execute()
                         limpar_campos(); st.rerun()
                     except: st.error("Erro ao excluir cliente.")
@@ -247,13 +248,13 @@ else:
                 if res.data: df_f = res.data
             except: st.session_state.forn_edit_id = None
         with st.container(border=True):
-            fn = st.text_input("Empresa*", value=df_f["nome_fornecedor"])
-            fr = st.text_input("Contato", value=df_f["representante"])
-            ft = st.text_input("Telefone", value=df_f["telefone"])
-            fz = st.text_input("WhatsApp*", value=df_f["whatsapp"])
-            fe = st.text_input("E-mail*", value=df_f["email"])
-            fc = st.text_input("CNPJ/CPF", value=df_f["cnpj"])
-            fend = st.text_input("Endereço", value=df_f["endereco"])
+            fn = st.text_input("Empresa*", value=df_f["nome_fornecedor"], key=f"fn_{ver}")
+            fr = st.text_input("Contato", value=df_f["representante"], key=f"fr_{ver}")
+            ft = st.text_input("Telefone", value=df_f["telefone"], key=f"ft_{ver}")
+            fz = st.text_input("WhatsApp*", value=df_f["whatsapp"], key=f"fz_{ver}")
+            fe = st.text_input("E-mail*", value=df_f["email"], key=f"fe_{ver}")
+            fc = st.text_input("CNPJ/CPF", value=df_f["cnpj"], key=f"fc_{ver}")
+            fend = st.text_input("Endereço", value=df_f["endereco"], key=f"fend_{ver}")
             if st.button("SALVAR FORNECEDOR", use_container_width=True, type="primary"):
                 p = {"nome_fornecedor": fn, "representante": fr, "telefone": ft, "whatsapp": aplicar_mask_tel(fz), "email": fe, "cnpj": aplicar_mask_cnpj(fc), "endereco": fend}
                 if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
@@ -266,10 +267,9 @@ else:
                 if c1.button("Editar", key=f"e_f_{f['id']}"): st.session_state.forn_edit_id = f['id']; st.rerun()
                 if c2.button("Excluir", key=f"d_f_{f['id']}"): 
                     try:
-                        # CORREÇÃO: Limpar IDs antes de excluir para evitar erro de referência na API
                         st.session_state.forn_edit_id = None
                         supabase.table("fornecedores").delete().eq("id", f['id']).execute()
-                        st.rerun()
+                        limpar_campos(); st.rerun()
                     except: st.error("Este fornecedor possui vínculos e não pode ser excluído.")
 
     elif pag == 'OBRA' and perf == 'ADMIN':
@@ -283,19 +283,22 @@ else:
             except: st.session_state.obra_edit_id = None
         clis = listar_clientes()
         with st.container(border=True):
-            on = st.text_input("Nome*", value=do["nome_obra"])
+            on = st.text_input("Nome*", value=do["nome_obra"], key=f"on_{ver}")
             idx = ([""] + list(clis.keys())).index(next((k for k, v in clis.items() if v == do["cliente_id"]), "")) if do["cliente_id"] else 0
-            oc = st.selectbox("Cliente*", [""] + list(clis.keys()), index=idx)
-            ol = st.text_input("Local da Obra", value=do.get("local_obra",""))
-            ov = st.number_input("Orçamento", value=float(do["orcamento_previsto"]))
+            oc = st.selectbox("Cliente*", [""] + list(clis.keys()), index=idx, key=f"oc_{ver}")
+            ol = st.text_input("Local da Obra", value=do.get("local_obra",""), key=f"ol_{ver}")
+            ov = st.number_input("Orçamento", value=float(do["orcamento_previsto"]), key=f"ov_{ver}")
             c1, c2 = st.columns(2)
-            oluc = c1.number_input("Lucro %", value=float(do.get("lucro_estimado") or 0))
-            oimp = c2.number_input("Imposto %", value=float(do.get("impostos_estimados") or 0))
+            oluc = c1.number_input("Lucro %", value=float(do.get("lucro_estimado") or 0), key=f"oluc_{ver}")
+            oimp = c2.number_input("Imposto %", value=float(do.get("impostos_estimados") or 0), key=f"oimp_{ver}")
             if st.button("SALVAR OBRA", use_container_width=True, type="primary"):
-                p = {"nome_obra": on, "cliente_id": clis[oc], "orcamento_previsto": ov, "lucro_estimado": oluc, "impostos_estimados": oimp, "local_obra": ol}
-                if st.session_state.obra_edit_id: supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
-                else: supabase.table("obras").insert(p).execute()
-                limpar_campos(); st.rerun()
+                if on and oc:
+                    p = {"nome_obra": on, "cliente_id": clis[oc], "orcamento_previsto": ov, "lucro_estimado": oluc, "impostos_estimados": oimp, "local_obra": ol}
+                    if st.session_state.obra_edit_id: supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
+                    else: supabase.table("obras").insert(p).execute()
+                    # CORREÇÃO: Limpar campos após salvar obra
+                    limpar_campos(); st.rerun()
+                else: st.warning("Preencha os campos obrigatórios.")
 
     elif pag == 'GASTO':
         st.markdown("### Lançar Gasto")
@@ -349,16 +352,17 @@ else:
     elif pag == 'USUARIOS' and perf == 'ADMIN':
         st.markdown("### Gestão de Equipe")
         with st.container(border=True):
-            ne = st.text_input("Novo E-mail")
-            ns = st.text_input("Nova Senha", type="password")
-            # AJUSTE: Removido sublinhado para testar restrição do banco (Imagem 7d2782)
-            np = st.selectbox("Perfil", ["ADMIN", "LANCADOR", "EXTERNO"])
+            ne = st.text_input("Novo E-mail", key=f"ne_{ver}")
+            ns = st.text_input("Nova Senha", type="password", key=f"ns_{ver}")
+            np = st.selectbox("Perfil", ["ADMIN", "LANCADOR", "LANCADOR_EXTERNO"], key=f"np_{ver}")
             if st.button("CADASTRAR"):
-                try:
-                    # Mapeamento para garantir o valor correto no banco
-                    perf_bd = "LANCADOR_EXTERNO" if np == "EXTERNO" else np
-                    supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": perf_bd}).execute()
-                    st.success("Sucesso!"); st.rerun()
-                except Exception as e: st.error(f"Erro no Banco: Verifique se o perfil '{np}' é aceito.")
+                if ne and ns:
+                    try:
+                        supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
+                        st.success("Sucesso!"); 
+                        # CORREÇÃO: Limpar campos após cadastrar equipe
+                        limpar_campos(); st.rerun()
+                    except Exception as e: st.error(f"Erro no Banco: Verifique as credenciais.")
+                else: st.warning("Preencha e-mail e senha.")
         u_l = supabase.table("usuarios").select("id, email, perfil").execute().data
         if u_l: st.table(pd.DataFrame(u_l))
