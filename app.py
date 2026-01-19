@@ -45,7 +45,6 @@ def realizar_login(email, senha):
             user = res.data[0]
             st.session_state.logado = True
             st.session_state.user_perfil = user['perfil']
-            # Redirecionamento automático baseado no perfil
             if user['perfil'] == 'LANCADOR_EXTERNO':
                 st.session_state.pagina = 'GASTO'
             else:
@@ -85,7 +84,7 @@ st.markdown(f"""
     .data-card {{ background: #F8F9FA; padding: 20px; border-radius: 8px; border: 1px solid #E9ECEF; margin-bottom: 15px; color: #1e1e1e; }}
     div.stButton > button[key="trigger"] {{ background-color: transparent !important; color: #FFFFFF !important; width: 45px !important; height: 45px !important; border: none !important; font-size: 30px !important; }}
     .nav-card button {{ width: 100% !important; height: 50px !important; font-weight: 600 !important; margin-bottom: 8px !important; }}
-    .logo-container img {{ border-radius: 0px !important; box-shadow: none !important; }}
+    .logo-container img {{ border-radius: 0px !important; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -188,9 +187,7 @@ else:
                 res_s = supabase.rpc('get_gastos_por_categoria', {'p_obra_id': oid}).execute()
                 gt = sum(float(i['total']) for i in res_s.data) if res_s.data else 0
                 orc = float(inf.get('orcamento_previsto', 0))
-                # CORREÇÃO: Usando .get() para evitar erro se campo for Nulo
-                p_luc = float(inf.get('lucro_estimado') or 0)
-                p_imp = float(inf.get('impostos_estimados') or 0)
+                p_luc = float(inf.get('lucro_estimado') or 0); p_imp = float(inf.get('impostos_estimados') or 0)
                 v_luc = orc * (p_luc/100); v_imp = orc * (p_imp/100); l_real = orc - gt - v_imp
                 c1, c2, c3, c4 = st.columns(4)
                 with c1: st.markdown(f'<div class="metric-container"><small class="metric-label">Orçado</small><br><span class="metric-value">{formatar_real(orc)}</span></div>', unsafe_allow_html=True)
@@ -212,17 +209,20 @@ else:
         with st.container(border=True):
             cn = st.text_input("Nome*", value=dc["nome_cliente"], key=f"cl_n_{k}")
             cr = st.text_input("Representante", value=dc["representante"], key=f"cl_r_{k}")
+            ct = st.text_input("Telefone fixo", value=dc["telefone"], key=f"cl_t_{k}")
             cz = st.text_input("WhatsApp*", value=dc["whatsapp"], key=f"cl_z_{k}")
             ce = st.text_input("E-mail*", value=dc["email"], key=f"cl_m_{k}")
             cc = st.text_input("CNPJ/CPF", value=dc["cnpj"], key=f"cl_c_{k}")
-            cend = st.text_input("Endereço", value=dc["endereco"], key=f"cl_e_{k}")
+            cend = st.text_input("Endereço Completo", value=dc["endereco"], key=f"cl_e_{k}")
             if st.button("SALVAR CLIENTE", use_container_width=True, type="primary"):
-                p = {"nome_cliente": cn, "representante": cr, "whatsapp": aplicar_mask_tel(cz), "email": ce, "cnpj": aplicar_mask_cnpj(cc), "endereco": cend}
+                p = {"nome_cliente": cn, "representante": cr, "telefone": ct, "whatsapp": aplicar_mask_tel(cz), "email": ce, "cnpj": aplicar_mask_cnpj(cc), "endereco": cend}
                 if st.session_state.clie_edit_id: supabase.table("clientes").update(p).eq("id", st.session_state.clie_edit_id).execute()
                 else: supabase.table("clientes").insert(p).execute()
                 limpar_campos(); st.rerun()
         for c in (supabase.table("clientes").select("*").order("nome_cliente").execute().data or []):
             with st.expander(f"👤 {c['nome_cliente']}"):
+                st.write(f"📍 {c.get('endereco', 'Endereço não informado')}")
+                st.write(f"📞 {c.get('whatsapp', '')} | {c.get('telefone', '')}")
                 c1, c2 = st.columns(2)
                 if c1.button("Editar", key=f"be_c_{c['id']}"): st.session_state.clie_edit_id = c['id']; st.rerun()
                 if c2.button("Excluir", key=f"bd_c_{c['id']}"): supabase.table("clientes").delete().eq("id", c['id']).execute(); st.rerun()
@@ -238,16 +238,20 @@ else:
         with st.container(border=True):
             fn = st.text_input("Empresa*", value=df["nome_fornecedor"], key=f"f_n_{k}")
             fr = st.text_input("Contato", value=df["representante"], key=f"f_r_{k}")
+            ft = st.text_input("Telefone fixo", value=df["telefone"], key=f"f_t_{k}")
             fz = st.text_input("WhatsApp*", value=df["whatsapp"], key=f"f_z_{k}")
             fe = st.text_input("E-mail*", value=df["email"], key=f"f_m_{k}")
             fc = st.text_input("CNPJ/CPF", value=df["cnpj"], key=f"f_c_{k}")
+            fend = st.text_input("Endereço", value=df["endereco"], key=f"f_e_{k}")
             if st.button("SALVAR FORNECEDOR", use_container_width=True, type="primary"):
-                p = {"nome_fornecedor": fn, "representante": fr, "whatsapp": aplicar_mask_tel(fz), "email": fe, "cnpj": aplicar_mask_cnpj(fc)}
+                p = {"nome_fornecedor": fn, "representante": fr, "telefone": ft, "whatsapp": aplicar_mask_tel(fz), "email": fe, "cnpj": aplicar_mask_cnpj(fc), "endereco": fend}
                 if st.session_state.forn_edit_id: supabase.table("fornecedores").update(p).eq("id", st.session_state.forn_edit_id).execute()
                 else: supabase.table("fornecedores").insert(p).execute()
                 limpar_campos(); st.rerun()
         for f in (supabase.table("fornecedores").select("*").order("nome_fornecedor").execute().data or []):
             with st.expander(f"🤝 {f['nome_fornecedor']}"):
+                st.write(f"📍 {f.get('endereco', 'Sem endereço')}")
+                st.write(f"📞 {f.get('whatsapp', '')}")
                 c1, c2 = st.columns(2)
                 if c1.button("Editar", key=f"be_f_{f['id']}"): st.session_state.forn_edit_id = f['id']; st.rerun()
                 if c2.button("Excluir", key=f"bd_f_{f['id']}"): supabase.table("fornecedores").delete().eq("id", f['id']).execute(); st.rerun()
@@ -255,7 +259,7 @@ else:
     elif pag == 'OBRA' and perf == 'ADMIN':
         st.markdown("### Gestão de Obras")
         if st.session_state.obra_edit_id and st.button("➕ NOVA OBRA"): limpar_campos(); st.rerun()
-        do = {"nome_obra":"", "cliente_id":"", "orcamento_previsto":0.0, "lucro_estimado":0.0, "impostos_estimados":0.0}
+        do = {"nome_obra":"", "cliente_id":"", "orcamento_previsto":0.0, "lucro_estimado":0.0, "impostos_estimados":0.0, "local_obra":""}
         if st.session_state.obra_edit_id:
             res = supabase.table("obras").select("*").eq("id", st.session_state.obra_edit_id).single().execute()
             if res.data: do = res.data
@@ -265,12 +269,13 @@ else:
             on = st.text_input("Nome*", value=do["nome_obra"], key=f"o_n_{k}")
             idx = ([""] + list(clis.keys())).index(next((k for k, v in clis.items() if v == do["cliente_id"]), "")) if do["cliente_id"] else 0
             oc = st.selectbox("Cliente*", [""] + list(clis.keys()), index=idx, key=f"o_c_{k}")
+            ol = st.text_input("Local da Obra", value=do.get("local_obra", ""), key=f"o_l_{k}")
             ov = st.number_input("Orçamento", value=float(do["orcamento_previsto"]), key=f"o_v_{k}")
             c1, c2 = st.columns(2)
             oluc = c1.number_input("Lucro %", value=float(do.get("lucro_estimado") or 0))
             oimp = c2.number_input("Imposto %", value=float(do.get("impostos_estimados") or 0))
             if st.button("SALVAR OBRA", use_container_width=True, type="primary"):
-                p = {"nome_obra": on, "cliente_id": clis[oc], "orcamento_previsto": ov, "lucro_estimado": oluc, "impostos_estimados": oimp}
+                p = {"nome_obra": on, "cliente_id": clis[oc], "orcamento_previsto": ov, "lucro_estimado": oluc, "impostos_estimados": oimp, "local_obra": ol}
                 if st.session_state.obra_edit_id: supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
                 else: supabase.table("obras").insert(p).execute()
                 limpar_campos(); st.rerun()
@@ -315,7 +320,6 @@ else:
                     df_d = pd.DataFrame(d)
                     c1, c2 = st.columns(2)
                     c1.download_button("📥 PDF", gerar_pdf(df_d, o_f), f"{o_f}.pdf", use_container_width=True)
-                    # CORREÇÃO: Try/Except para evitar erro se xlsxwriter faltar
                     try:
                         import xlsxwriter
                         output = io.BytesIO()
@@ -323,8 +327,7 @@ else:
                             df_d.to_excel(writer, index=False)
                         c2.download_button("📊 Excel", output.getvalue(), f"{o_f}.xlsx", use_container_width=True)
                     except Exception:
-                        c2.warning("Instale 'xlsxwriter' para Excel")
-
+                        c2.warning("Instale 'xlsxwriter'")
                     for g in d:
                         cor = "🟢" if g.get('status_pagamento') == "Pago" else "🔴"
                         with st.expander(f"{cor} {g['descricao']} | {formatar_real(g['valor'])}"):
