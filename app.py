@@ -70,14 +70,13 @@ def formatar_real(valor):
         return f"R$ {val:,.2f}".replace(",", "v").replace(".", ",").replace("v", ".")
     except: return "R$ 0,00"
 
-# --- 4. ESTILO VISUAL (CORREÇÃO DA LOGO E DEFORMAÇÃO) ---
+# --- 4. ESTILO VISUAL ---
 st.markdown(f"""
     <style>
     [data-testid="stSidebar"], [data-testid="stHeader"] {{display: none;}}
     .block-container {{ padding-top: 2rem !important; }}
     .main-title {{ color: #FFFFFF !important; font-size: 1.4rem; font-weight: 700; margin-bottom: 15px; }}
     
-    /* REMOVER DEFINITIVAMENTE BORDAS ARREDONDADAS DA LOGO */
     img, [data-testid="stImage"] img {{ 
         border-radius: 0px !important; 
         object-fit: contain !important;
@@ -86,7 +85,6 @@ st.markdown(f"""
     .metric-container {{ background: #1E1E1E; padding: 15px; border-radius: 10px; border: 1px solid #333; margin-bottom: 10px; text-align: center; }}
     .metric-label {{ color: #AAAAAA; font-size: 0.70rem; font-weight: 600; text-transform: uppercase; }}
     .metric-value {{ color: #FFFFFF; font-size: 1.1rem; font-weight: 800; }}
-    .data-card {{ background: #F8F9FA; padding: 20px; border-radius: 8px; border: 1px solid #E9ECEF; margin-bottom: 15px; color: #1e1e1e; }}
     div.stButton > button[key="trigger"] {{ background-color: transparent !important; color: #FFFFFF !important; width: 45px !important; height: 45px !important; border: none !important; font-size: 30px !important; }}
     .nav-card button {{ width: 100% !important; height: 50px !important; font-weight: 600 !important; margin-bottom: 8px !important; }}
     </style>
@@ -234,8 +232,7 @@ else:
                 if c2.button("Excluir", key=f"d_cl_{c['id']}"): 
                     try:
                         st.session_state.clie_edit_id = None
-                        supabase.table("clientes").delete().eq("id", c['id']).execute()
-                        limpar_campos(); st.rerun()
+                        supabase.table("clientes").delete().eq("id", c['id']).execute(); limpar_campos(); st.rerun()
                     except: st.error("Erro ao excluir cliente.")
 
     elif pag == 'FORN' and perf != 'LANCADOR_EXTERNO':
@@ -268,19 +265,20 @@ else:
                 if c2.button("Excluir", key=f"d_f_{f['id']}"): 
                     try:
                         st.session_state.forn_edit_id = None
-                        supabase.table("fornecedores").delete().eq("id", f['id']).execute()
-                        limpar_campos(); st.rerun()
-                    except: st.error("Este fornecedor possui vínculos e não pode ser excluído.")
+                        supabase.table("fornecedores").delete().eq("id", f['id']).execute(); limpar_campos(); st.rerun()
+                    except: st.error("Erro ao excluir fornecedor.")
 
     elif pag == 'OBRA' and perf == 'ADMIN':
         st.markdown("### Gestão de Obras")
-        if st.session_state.obra_edit_id and st.button("➕ NOVA"): limpar_campos(); st.rerun()
+        if st.session_state.obra_edit_id and st.button("➕ NOVA OBRA"): limpar_campos(); st.rerun()
+        
         do = {"nome_obra":"", "cliente_id":"", "orcamento_previsto":0.0, "lucro_estimado":0.0, "impostos_estimados":0.0, "local_obra":""}
         if st.session_state.obra_edit_id:
             try:
                 res = supabase.table("obras").select("*").eq("id", st.session_state.obra_edit_id).single().execute()
                 if res.data: do = res.data
             except: st.session_state.obra_edit_id = None
+            
         clis = listar_clientes()
         with st.container(border=True):
             on = st.text_input("Nome*", value=do["nome_obra"], key=f"on_{ver}")
@@ -296,9 +294,26 @@ else:
                     p = {"nome_obra": on, "cliente_id": clis[oc], "orcamento_previsto": ov, "lucro_estimado": oluc, "impostos_estimados": oimp, "local_obra": ol}
                     if st.session_state.obra_edit_id: supabase.table("obras").update(p).eq("id", st.session_state.obra_edit_id).execute()
                     else: supabase.table("obras").insert(p).execute()
-                    # CORREÇÃO: Limpar campos após salvar obra
                     limpar_campos(); st.rerun()
                 else: st.warning("Preencha os campos obrigatórios.")
+        
+        # --- LISTA DE OBRAS PARA EDITAR/EXCLUIR ---
+        st.markdown("---")
+        obras_lista = supabase.table("obras").select("*, clientes(nome_cliente)").order("nome_obra").execute().data
+        for o in (obras_lista or []):
+            with st.expander(f"🏗️ {o['nome_obra']} ({o['clientes']['nome_cliente']})"):
+                st.write(f"📍 Local: {o.get('local_obra','Não informado')}")
+                st.write(f"💰 Orçamento: {formatar_real(o['orcamento_previsto'])}")
+                c1, c2 = st.columns(2)
+                if c1.button("Editar", key=f"e_ob_{o['id']}"): 
+                    st.session_state.obra_edit_id = o['id']
+                    st.rerun()
+                if c2.button("Excluir", key=f"d_ob_{o['id']}"): 
+                    try:
+                        st.session_state.obra_edit_id = None
+                        supabase.table("obras").delete().eq("id", o['id']).execute()
+                        limpar_campos(); st.rerun()
+                    except: st.error("Esta obra possui lançamentos e não pode ser excluída.")
 
     elif pag == 'GASTO':
         st.markdown("### Lançar Gasto")
@@ -359,10 +374,7 @@ else:
                 if ne and ns:
                     try:
                         supabase.table("usuarios").insert({"email": ne, "senha": ns, "perfil": np}).execute()
-                        st.success("Sucesso!"); 
-                        # CORREÇÃO: Limpar campos após cadastrar equipe
-                        limpar_campos(); st.rerun()
-                    except Exception as e: st.error(f"Erro no Banco: Verifique as credenciais.")
-                else: st.warning("Preencha e-mail e senha.")
+                        st.success("Sucesso!"); limpar_campos(); st.rerun()
+                    except Exception as e: st.error("Erro ao cadastrar usuário.")
         u_l = supabase.table("usuarios").select("id, email, perfil").execute().data
         if u_l: st.table(pd.DataFrame(u_l))
